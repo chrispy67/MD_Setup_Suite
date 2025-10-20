@@ -1,0 +1,43 @@
+Heating Stage 1 - Constant Volume heating, 50 ps  0 -> 100 K
+ &cntrl
+  ! General Input Controls 
+  imin=0,                   ! Run MD
+  irest=0,                  ! Restart a new simulation
+  ntx=1,                    ! Read only coordinates
+  nstlim=25000,             ! 25,000 steps = 50 picoseconds
+  dt=0.004,                 ! 2 fs timestep
+  ig=-1,                    ! RNG thingy 
+
+  ! Energy Function Controls 
+  ntc=2,                    ! SHAKE Parameters -> All bonds involving hydrogen are constrained
+  ntf=2,                    ! Bonds interactions involving H-atoms are omitted 
+  cut=10.0,                  ! Nonbonded cutoff 
+  ntr=1,                    ! Restraints present
+  restraint_wt=25,          ! Restraing Weight and mask
+  restraintmask=':1-RESNUM@CA,C,N,O,PA,PB,Mg,MG', ! Restraints on CA atoms only
+ 
+  ! Temperature Regulation
+  tempi=0.0,                ! Starting Temperature
+  temp0=100.0,              ! Target Temperature 
+  ntt=3,                    ! 
+  gamma_ln=2,
+
+  ! Volume Regulation 
+  ntb=1,                    ! Constant Volume periodic boundaries
+  
+  ! Output Controls 
+  iwrap=1,                  ! Wrap atoms to primary box
+  ntpr=2500,                 ! Energy write frequency 
+  ntwx=2500,                 ! Coordinate Write Frequency (1 ps)
+  ioutfm=1,                 ! Output Format
+  ntxo=2,                   ! Restart File Format 
+  nmropt=1,
+ &end
+ 
+ /
+ &wt
+   type='TEMP0', istep1=0, istep2=25000,
+   value1=0.0, value2=100.0
+ /
+ &wt type='END'
+ /

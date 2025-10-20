@@ -1,0 +1,36 @@
+Equilibration Stage 1 - NPT Equilibration 
+ &cntrl
+  ! General Input Controls 
+  imin=0,                             ! Perform MD
+  ntx=5,                              ! Read coordinates and velocities
+  irest=1,                            ! Restart a new simulation 
+  nstlim=25000,                       ! 100ps NPT Equilibration 
+  dt=0.004,                           ! Time step 
+  ig=-1,                              ! RNG Thingy 
+
+  ! Temperature Control 
+  temp0=310.0,                        ! Target Temperature
+  ntt=11,                    !
+  tautp=2.5,
+
+  ! Volume/Pressure Control 
+  ntp=1,                              ! MD with isotropic position scaling 
+  ntb=2,                              ! Constant pressure
+  barostat=2,
+  taup=0.1,
+  
+  ! Energy FUnction Controls
+  ntf=2,                              ! Shake
+  ntc=2,                              ! Shake
+  cut=10.0,                            ! Nonbonded cutoff
+  ntr=1,                              ! Restraints present
+  restraint_wt=25,                    ! Restraint weight
+  restraintmask=':1-RESNUM@CA,C,N,O,PA,PB,Mg,MG',
+
+  ! Output Controls
+  ntpr=2500,                           ! Energy write frequency
+  ntwx=2500,                           ! Coordinate write frequency
+  iwrap=1,                            ! Wrap coordinates to teh primary box
+  ioutfm=1,                           ! Output format
+  ntxo=2,                             ! Restart file format     
+ &end

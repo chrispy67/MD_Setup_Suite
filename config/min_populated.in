@@ -1,0 +1,18 @@
+Minimization Stage 1 - Hydrogen Minimization 
+
+ &cntrl 
+  imin=1,                     ! Perform energy minimization 
+  ntmin=steepest_descent,             ! USER SELECTS MINIMIZATION TECHNIQUE
+  maxcyc=100000,             ! USER SELECTS MAX # OF STEPS
+  ncyc=250,                   !  500 Rounds of Steepest Descent
+  ntx=0,              ! Read Coordinates only 
+  ntf=1,                      ! Force Evaluation, calc all interactions
+  cut=10.0,        ! USER SELECTS NONBONDED CUT default=10.0
+  ntr=1,            ! USER SELECTS RESTRAINT ON/OFF
+  restraint_wt=10,   ! USER SELECTS RESTRAINT FORCE
+  restraintmask='a_Bb_CCC',  ! USER SELECTS WHICH ATOMS ARE RESTRAINTED
+  iwrap=1,                    ! Wrap coodinates to the primary box
+  ntxo=2,                     ! Coordinate Format = NetCDF
+  ntpr=50,    ! USER SELECTS OUTPUT FREQUENCY FOR AMBER
+ /  
+
