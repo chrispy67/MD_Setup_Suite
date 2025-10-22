@@ -143,16 +143,16 @@ class SimulationSetup:
                         )
         return
 
-
 class BuildInputFiles():
 
     # Same notation we hvae in SimulationSetup, taking in .yaml file with all parameters
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
 
-    def build_em(self):
-        """Build energy minimization input files by populating template with user parameters."""
-        
+        # each input file is renamed, filled out, and copied to the input_files_dir from JSON config
+        self.input_files_dir = Path(__file__).parent / cfg["global"]["input_files_dir"]
+
+    def build_em(self):        
 
         # Big issue here is mapping these values to positional arguments found in AMBER's documentation...
         EM_yaml_to_amber = [
@@ -165,13 +165,12 @@ class BuildInputFiles():
             ("max_force", "restraint_wt"),
             ("restraint_string", "restraintmask")
         ]
-
         
         # Read the template file
-        template_path = Path(__file__).parent / "input_files" / "min_BLANK.in"
+        template_path = self.input_files_dir / "min_BLANK.in"
         
         if not template_path.exists():
-            # logger.error(f"Template file not found: {template_path}")
+            logger.error(f"Template file not found: {template_path}")
             return
             
         with open(template_path, 'r') as f:
@@ -199,7 +198,7 @@ class BuildInputFiles():
                 logger.warning(f"Key '{yaml_key}' not found in EM configuration")
         
         # Write the populated content to a new file
-        output_path = Path(__file__).parent / "input_files" / "min_populated.in"
+        output_path = self.input_files_dir / "min_populated.in"
         with open(output_path, 'w') as f:
             f.write(template_content)
             
@@ -207,8 +206,20 @@ class BuildInputFiles():
         return template_content
     
     def build_nvt_equil(self):
-        
-        
+
+        NVT_yaml_to_amber = [
+            ("thermostat", "tcoupl"), # tcoupl is for GROMACS, where is thermostat indicated for amber?
+            ("steps", "nstlim"),
+            ("timestep", "dt"),
+            ("initial_temperature", "temp0"),
+            ("final_temperature", "tempi"),
+            # ("hmass_repart", "VOID"), # What does this change in the amber inputs?
+            ("nonbonded_cut", "cut"),
+            ("restraint", "ntr"),
+            ("restraint_weight", "restraint_wt"),
+            ("restraint_string", "restraintmask")
+        ]
+
         ramped_heat = self.cfg.simulations.NVT_ensemble.ramped_heating
 
         if ramped_heat:
@@ -220,21 +231,24 @@ class BuildInputFiles():
             
             print(f"***NVT equilibration will be done in {heat_windows} steps***")
 
-            # Set arrays to store values in config
+            # Set arrays from stored values in JSON config
             temp_gradient = (float(temp_f) - float(temp_i)) / int(heat_windows) # Deg (K) per window
 
             temp_windows = []
             temp_prev = float(temp_i)
-            for i in range(heat_windows):
+
+            ## Create directories
+            for i in range(heat_windows): # [(0.0, 60.0), (60.0, 120.0), (120.0, 180.0), (180.0, 240.0), (240.0, 300.0)]
                 temp_next = temp_prev + temp_gradient
                 temp_windows.append((temp_prev, temp_next))
                 temp_prev = temp_next
+                
 
             # Example variables you'd actually draw from config/environment
             base_sim_dir = "./simulations"
             system_name = getattr(self.cfg, "system_name", "my_protein")
             num_windows = self.cfg["global"]["windows"] # How to access GLOBAL variables, of which there will be more
-            
+            window_heat_dirs = []
             # Enumerate through each value pair in temp_windows and generate a subdirectory in each NVT/ folder in simulations/my_protein_window_{i}/NVT/heat1, heat2, etc.
             for window_idx in range(0, num_windows):
                 window_folder = os.path.join(
@@ -244,32 +258,124 @@ class BuildInputFiles():
 
                     heat_dir = os.path.join(window_folder, f"heat{idx}")
                     try:
-                        os.makedirs(heat_dir, exist_ok=False)
-                        print(f"Created directory: {heat_dir}")
+                        os.makedirs(heat_dir, exist_ok=False) # FLOW CONTROL FOR OVERWRITING/CREATING NEW FOLDER HIREARCHIES STARTS HERE 
+                        print(f"Heating directory created!: {heat_dir}")
                     except FileExistsError as e:
+                        window_heat_dirs.append(heat_dir)
                         print(f"Failed to create directory, {heat_dir} already exists!")
+
+
+            ## Build input files for each temperature window
+            # Read the template file
+            template_path = self.input_files_dir / "heat_BLANK.in"
+            
+            if not template_path.exists():
+                logger.error(f"Template file not found: {template_path}")
+                return
+            
+            with open(template_path, 'r') as f:
+                template_content = f.read()
+            
+            nvt_config = self.cfg.simulations.NVT_ensemble
+            
+            # Create input files for each temperature window in each simulation window
+            for window_idx in range(0, num_windows):
+                window_folder = os.path.join(
+                    base_sim_dir, f"{system_name}_window_{window_idx}", "NVT"
+                )
+                
+                for heat_idx, (temp_prev, temp_next) in enumerate(temp_windows):
+                    heat_dir = os.path.join(window_folder, f"heat{heat_idx}")
+                    
+                    # Create a copy of the template for this specific heat window
+                    current_template = template_content
+
+                    # Process each mapping
+                    for yaml_key, amber_key in NVT_yaml_to_amber:
+                        if yaml_key == "initial_temperature":
+                            value = temp_prev
+                        elif yaml_key == "final_temperature":
+                            value = temp_next
+                        elif hasattr(nvt_config, yaml_key):
+                            value = getattr(nvt_config, yaml_key)
+                        else:
+                            logger.warning(f"Key '{yaml_key}' not found in NVT configuration")
+                            continue
+                        
+                        # Convert boolean values to appropriate format for AMBER (WIP)
+                        if isinstance(value, bool):
+                            value = 1 if value else 0
+                        
+                        # Replace the placeholder in the template
+                        placeholder = f"{{{yaml_key}}}"
+                        current_template = current_template.replace(placeholder, str(value))
+                    
+                    # Also replace the temperature placeholders directly
+                    current_template = current_template.replace("{initial_temperature}", str(temp_prev))
+                    current_template = current_template.replace("{final_temperature}", str(temp_next))
+                    
+                    # Write the populated content to the specific heat directory
+                    output_path = os.path.join(heat_dir, "heat.in")
+                    with open(output_path, 'w') as f:
+                        f.write(current_template)
 
 
         else:
             print("**NVT equilibration will be done in one step**")
+            
+            # Read the template file for single-step NVT
+            template_path = self.input_files_dir / "heat_BLANK.in"
+            
+            if not template_path.exists():
+                logger.error(f"Template file not found: {template_path}")
+                return
+            
+            with open(template_path, 'r') as f:
+                template_content = f.read()
+            
+            nvt_config = self.cfg.simulations.NVT_ensemble
+            
+            # Create input files for each simulation window (single NVT step)
+            base_sim_dir = "./simulations"
+            system_name = getattr(self.cfg, "system_name", "my_protein")
+            num_windows = self.cfg["global"]["windows"]
+            
+            for window_idx in range(0, num_windows):
+                window_folder = os.path.join(
+                    base_sim_dir, f"{system_name}_window_{window_idx}", "NVT"
+                )
+                
+                # Create a copy of the template for this window
+                current_template = template_content
+                
+                # Process each mapping
+                for yaml_key, amber_key in NVT_yaml_to_amber:
+                    if hasattr(nvt_config, yaml_key):
+                        value = getattr(nvt_config, yaml_key)
+                        
+                        # Convert boolean values to appropriate format for AMBER
+                        if isinstance(value, bool):
+                            value = 1 if value else 0
+                        
+                        # Replace the placeholder in the template
+                        placeholder = f"{{{yaml_key}}}"
+                        current_template = current_template.replace(placeholder, str(value))
+                    else:
+                        logger.warning(f"Key '{yaml_key}' not found in NVT configuration")
+                
+                # Also replace the temperature placeholders directly for single-step NVT
+                current_template = current_template.replace("{initial_temperature}", str(nvt_config.initial_temperature))
+                current_template = current_template.replace("{final_temperature}", str(nvt_config.final_temperature))
+                
+                # Write the populated content to the NVT directory
+                output_path = os.path.join(window_folder, "heat.in")
+                with open(output_path, 'w') as f:
+                    f.write(current_template)
+                
+                logger.info(f"Generated single-step NVT input file for window {window_idx}: {output_path}")
 
+        return output_path
 
-
-        # this is for ONE simulation; an additional function can be written to create ramped heating setup
-        NVT_yaml_to_amber = [
-            ("thermostat", "tcoupl"), # tcoupl is for GROMACS, where is thermostat indicated for amber?
-            ("steps", "nstlim"),
-            ("timestep", "dt"),
-            ("initial_temperature", "temp0"),
-            ("final_temperature", "tempi"),
-            ("hmass_repart", "VOID"), # What does this change?
-            ("nonbonded_cut", "cut"),
-            ("restraint", "ntr"),
-            ("restraint_weight", "restraint_wt"),
-            ("restraint_string", "restraintmask")
-        ]
-        return
-    
     def build_npt_equil():
 
         NPT_yaml_to_amber = [
@@ -298,9 +404,10 @@ def main(cfg):
     # Create simulation setup instance
     setup = SimulationSetup(cfg)
 
+
+    # The order in which I call these functions is really important, e
     input_files = BuildInputFiles(cfg)
     # Test the EM input file generation
-    input_files.build_nvt_equil
     input_files.build_em()
     
 
@@ -319,7 +426,7 @@ def main(cfg):
         optional=optional
     )
     print(f"\nCreated simulation directory structures:")
-    for i, dir_path in enumerate(created_dirs, 1):
+    for i, dir_path in enumerate(created_dirs, 0):
         print(f"  Window {i}: {dir_path}")
     
     print(f"\nEach window contains:")
@@ -329,7 +436,11 @@ def main(cfg):
     print(f"\nTotal windows created: {len(created_dirs)}")
 
     ## Distribute COMPLETED and FILLED OUT files to the directory hirearchy recursively
-    setup._distribute_input_cards(base_path)
+    # setup._distribute_input_cards(base_path)
+    
+    # Regenerate heat files with correct temperatures
+    print("\nRegenerating heat files with correct temperature ranges...")
+    input_files.build_nvt_equil()
 
 
 if __name__ == "__main__":

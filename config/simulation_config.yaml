@@ -23,7 +23,9 @@ global:
   nonbonded_cutoff: 10.0
   langevin_damping: 1.0
 
+  # Umbrella sampling parameters and input files
   windows: 10
+  input_files_dir: "./config" # 
   
   # Computational resources (for submission scripts and interactive jobs on HPC?)
   user: "CTMR"
@@ -35,7 +37,7 @@ global:
 directories:
   base_path: "./simulations"
   naming_pattern: "{system_name}_{window_num}_{optional}"
-  subdirectories:
+  subdirectories: # Any additional subdirectories that should be CREATED within each simulation window
     - "analysis"
 
 # Simulation-specific configurations
@@ -57,7 +59,7 @@ simulations:
     restraint_string: "a_Bb_CCC" # String that is liable to change
     
   NVT_ensemble: #NVT
-    subdirectory: "./simulations/equil/NVT"
+    subdirectory: "./simulations/equil/NVT" #This is the subdirectory that will be created within each simulation window
     name: "NVT_Equilibration"
     thermostat: "Bussi" # Multiple options here that map to different positional args
     ramped_heating: True # We can use the status of this flag to build subdirectories and file inputs
@@ -76,7 +78,7 @@ simulations:
     restraint_string: "a_Bb_CCC" # String that is liable to change
     
   NPT_ensemble:
-    subdirectory: "./simulations/equil/NPT"
+    subdirectory: "./simulations/equil/NPT" # This is the subdirectory that will be created within each simulation window
     name: "NPT_Equilibration"
     barostat: "Parrinello-Rahman"
     restart: True

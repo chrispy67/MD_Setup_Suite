@@ -17,8 +17,8 @@ Heating Stage 1 - Constant Volume heating, 50 ps  0 -> 100 K
   restraintmask=':1-RESNUM@CA,C,N,O,PA,PB,Mg,MG', ! Restraints on CA atoms only
  
   ! Temperature Regulation
-  tempi=0.0,                ! Starting Temperature
-  temp0=100.0,              ! Target Temperature 
+  tempi={initial_temperature},                ! Starting Temperature
+  temp0={final_temperature},              ! Target Temperature 
   ntt=3,                    ! 
   gamma_ln=2,
 
@@ -37,7 +37,7 @@ Heating Stage 1 - Constant Volume heating, 50 ps  0 -> 100 K
  /
  &wt
    type='TEMP0', istep1=0, istep2=25000,
-   value1=0.0, value2=100.0
+   value1={initial_temperature}, value2={final_temperature}
  /
  &wt type='END'
  /
