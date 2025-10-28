@@ -12,6 +12,8 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import logging
 
+from src.pydantic_parameter_models import ParameterType, ParameterCategory, ParameterValidation, AmberParameter, ParameterGroup, ParameterRegistry, create_em_parameter_group, create_nvt_parameter_group, create_workflow_parameter_group
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -152,19 +154,37 @@ class BuildInputFiles():
         # each input file is renamed, filled out, and copied to the input_files_dir from JSON config
         self.input_files_dir = Path(__file__).parent / cfg["global"]["input_files_dir"]
 
-    def build_em(self):        
-
-        # Big issue here is mapping these values to positional arguments found in AMBER's documentation...
-        EM_yaml_to_amber = [
-            ("method", "ntmin"),
-            ("restart", "ntx"), 
-            ("steps", "maxcyc"), 
-            ("output_frequency", "ntpr"),
-            ("nonbonded_cut", "cut"),
-            ("restraint", "ntr"),
-            ("max_force", "restraint_wt"),
-            ("restraint_string", "restraintmask")
-        ]
+    def build_em(self, registry: ParameterRegistry = None):        
+        """Build EM input file using validated parameters from registry."""
+        
+        if registry:
+            # Use validated parameters from registry
+            em_group = registry.get_group("energy_minimization")
+            em_config = OmegaConf.to_container(self.cfg.simulations.em, resolve=True)
+            
+            # Validate again before building
+            # is_valid, errors = em_group.validate_config(em_config)
+            # if not is_valid:
+            #     logger.error(f"EM validation failed: {errors}")
+            #     return
+            
+            # Use registry parameters for mapping
+            EM_yaml_to_amber = []
+            for param in em_group.parameters:
+                if param.amber_flag:  # Skip workflow parameters
+                    EM_yaml_to_amber.append((param.yaml_key, param.amber_flag))
+        else:
+            # Fallback to hardcoded mapping | This is already in pydantic_parameter_models.py
+            EM_yaml_to_amber = [
+                ("method", "ntmin"),
+                ("restart", "ntx"), 
+                ("steps", "maxcyc"), 
+                ("output_frequency", "ntpr"),
+                ("nonbonded_cut", "cut"),
+                ("restraint", "ntr"),
+                ("max_force", "restraint_wt"),
+                ("restraint_string", "restraintmask")
+            ]
         
         # Read the template file
         template_path = self.input_files_dir / "min_BLANK.in"
@@ -179,7 +199,7 @@ class BuildInputFiles():
         # Get EM configuration from YAML
         em_config = self.cfg.simulations.em
         
-        # Enumerate through the mapping list and replace placeholders
+        # Enumerate through the mapping list and replace placeholders in _BLANK.in file
         for yaml_key, amber_key in EM_yaml_to_amber:
             # Get the value from the YAML config
             if hasattr(em_config, yaml_key):
@@ -204,7 +224,7 @@ class BuildInputFiles():
             
         # logger.info(f"Generated populated EM input file: {output_path}")
         return template_content
-    
+
     def build_nvt_equil(self):
 
         NVT_yaml_to_amber = [
@@ -237,7 +257,7 @@ class BuildInputFiles():
             temp_windows = []
             temp_prev = float(temp_i)
 
-            ## Create directories
+            ## Create temperature gradient pairs for directories heat0, heat1, heat2...
             for i in range(heat_windows): # [(0.0, 60.0), (60.0, 120.0), (120.0, 180.0), (180.0, 240.0), (240.0, 300.0)]
                 temp_next = temp_prev + temp_gradient
                 temp_windows.append((temp_prev, temp_next))
@@ -246,9 +266,8 @@ class BuildInputFiles():
 
             # Example variables you'd actually draw from config/environment
             base_sim_dir = "./simulations"
-            system_name = getattr(self.cfg, "system_name", "my_protein")
-            num_windows = self.cfg["global"]["windows"] # How to access GLOBAL variables, of which there will be more
             window_heat_dirs = []
+
             # Enumerate through each value pair in temp_windows and generate a subdirectory in each NVT/ folder in simulations/my_protein_window_{i}/NVT/heat1, heat2, etc.
             for window_idx in range(0, num_windows):
                 window_folder = os.path.join(
@@ -310,7 +329,7 @@ class BuildInputFiles():
                         placeholder = f"{{{yaml_key}}}"
                         current_template = current_template.replace(placeholder, str(value))
                     
-                    # Also replace the temperature placeholders directly
+                    # Also replace the temperature placeholders directly OUTSIDE of the the loop since this depends on directories
                     current_template = current_template.replace("{initial_temperature}", str(temp_prev))
                     current_template = current_template.replace("{final_temperature}", str(temp_next))
                     
@@ -404,12 +423,8 @@ def main(cfg):
     # Create simulation setup instance
     setup = SimulationSetup(cfg)
 
-
-    # The order in which I call these functions is really important, e
+    # The order in which I call these functions is really important
     input_files = BuildInputFiles(cfg)
-    # Test the EM input file generation
-    input_files.build_em()
-    
 
     ## HOW THE SCRIPT SHOULD BE RUN TO CREATE NEW DIRECTORY STRUCTURE
     base_path = Path(cfg.directories.base_path)
@@ -435,12 +450,70 @@ def main(cfg):
     
     print(f"\nTotal windows created: {len(created_dirs)}")
 
-    ## Distribute COMPLETED and FILLED OUT files to the directory hirearchy recursively
-    # setup._distribute_input_cards(base_path)
+    # Build registry and validate configuration
+    registry = ParameterRegistry()
+    registry.add_group(create_em_parameter_group())
+    registry.add_group(create_nvt_parameter_group())
+    registry.add_group(create_workflow_parameter_group())
     
-    # Regenerate heat files with correct temperatures
-    print("\nRegenerating heat files with correct temperature ranges...")
-    input_files.build_nvt_equil()
+    # Validate configuration before proceeding
+    print("\nValidating configuration...")
+    
+    # Validate EM parameters
+    em_group = registry.get_group("energy_minimization")
+    em_config = OmegaConf.to_container(cfg.simulations.em, resolve=True)
+    is_valid, errors = em_group.validate_config(em_config)
+    
+    if not is_valid:
+        print("❌ EM configuration errors:")
+        for error in errors:
+            print(f"  - {error}")
+        # return
+    else:
+        print("✅ EM configuration valid")
+    
+    # Validate NVT parameters
+    nvt_group = registry.get_group("nvt_ensemble")
+    nvt_config = OmegaConf.to_container(cfg.simulations.NVT_ensemble, resolve=True)
+    is_valid, errors = nvt_group.validate_config(nvt_config)
+    
+    if not is_valid:
+        print("❌ NVT configuration errors:")
+        # These should include issues with NVT config issues IF there are any. That is how I want to use this function
+        for error in errors:
+            print(f"  - {error}")
+        # return
+    else:
+        print("✅ NVT configuration valid")
+    
+    # Validate workflow parameters
+    workflow_group = registry.get_group("workflow_control")
+    workflow_config = OmegaConf.to_container(cfg["global"], resolve=True)
+    is_valid, errors = workflow_group.validate_config(workflow_config)
+    
+    if not is_valid:
+        print("❌ Workflow configuration errors:")
+        for error in errors:
+            print(f"  - {error}")
+        # return
+    else:
+        print("✅ Workflow configuration valid")
+    
+
+    # GROUPS: 
+    # - energy_minimization
+    # - 
+    # Generate input files with validated parameters
+    # print(registry.get_group("energy_minimization"))
+    print(registry.get_parameter(yaml_key= "method" , group_name="energy_minimization"))
+
+    print(registry.get_parameter(yaml_key="thermostat", group_name="nvt_ensemble"))
+
+
+    print("\nGenerating input files...")
+    # input_files.build_em(registry)
+    # input_files.build_nvt_equil()
+
 
 
 if __name__ == "__main__":
