@@ -2,28 +2,29 @@ Heating Stage 1 - Constant Volume heating, 50 ps  0 -> 100 K
  &cntrl
   ! General Input Controls 
   imin=0,                   ! Run MD
-  irest=0,                  ! Restart a new simulation
-  ntx=1,                    ! Read only coordinates
-  nstlim=25000,             ! 25,000 steps = 50 picoseconds
-  dt=0.004,                 ! 2 fs timestep
+  irest={restart_sim},                  ! Restart a new simulation
+  ntx={read_prev_coordinates},                    ! Read only coordinates
+  nstlim={steps},             ! 25,000 steps = 50 picoseconds
+  dt={timestep},                 ! 2 fs timestep
   ig=-1,                    ! RNG thingy 
 
   ! Energy Function Controls 
-  ntc=2,                    ! SHAKE Parameters -> All bonds involving hydrogen are constrained
-  ntf=2,                    ! Bonds interactions involving H-atoms are omitted 
-  cut=10.0,                  ! Nonbonded cutoff 
-  ntr=1,                    ! Restraints present
-  restraint_wt=25,          ! Restraing Weight and mask
+  ntc={SHAKE_param},                    !
+  ntf={Force_calculation},                    
+  cut={nonbonded_cut},                  ! Nonbonded cutoff 
+  ntr={restraint},                    ! Restraints present
+  restraint_wt={max_force},          ! Restraing Weight and mask
   restraintmask=':1-RESNUM@CA,C,N,O,PA,PB,Mg,MG', ! Restraints on CA atoms only
  
   ! Temperature Regulation
   tempi={initial_temperature},                ! Starting Temperature
   temp0={final_temperature},              ! Target Temperature 
-  ntt=3,                    ! 
-  gamma_ln=2,
+  ntt={thermostat},                                  ! Thermostat type 
+  gamma_ln={Collision_frequency},         ! Compulsory with ntt=3
+  tautp={heat_bath_coupling_constant}     ! Compulsory with ntt=1
 
   ! Volume Regulation 
-  ntb=1,                    ! Constant Volume periodic boundaries
+  ntb={PBC_treatment},                    
   
   ! Output Controls 
   iwrap=1,                  ! Wrap atoms to primary box

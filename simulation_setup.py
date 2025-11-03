@@ -502,7 +502,7 @@ def main(cfg):
 
     # GROUPS: 
     # - energy_minimization
-    # - 
+    # - nvt_ensemble
     # Generate input files with validated parameters
     # print(registry.get_group("energy_minimization"))
     print(registry.get_parameter(yaml_key= "method" , group_name="energy_minimization"))
