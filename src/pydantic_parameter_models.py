@@ -46,6 +46,15 @@ class ParameterValidation(BaseModel):
     max_length: Optional[int] = None
 
 
+class ParameterDependency(BaseModel):
+    """Defines a dependency rule between parameters."""
+    condition_param: str = Field(..., description="YAML key of the parameter that triggers the dependency")
+    condition_value: Any = Field(..., description="Value that must match for dependency to be active")
+    required_param: str = Field(..., description="YAML key of the parameter that must be set/valid")
+    required_condition: str = Field(..., description="Condition: 'required', 'required_gt_zero', 'must_be_zero', etc.")
+    error_message: str = Field(..., description="Error message if dependency is violated")
+
+
 class AmberParameter(BaseModel):
     """AMBER parameter definition with validation."""
     yaml_key: str = Field(..., description="YAML configuration key")
@@ -176,10 +185,16 @@ class ParameterGroup(BaseModel):
     name: str = Field(..., description="Group name")
     description: str = Field(..., description="Group description")
     parameters: List[AmberParameter] = Field(default_factory=list, description="Parameters in this group")
+    dependencies: List[ParameterDependency] = Field(default_factory=list, description="Cross-parameter dependency rules")
     
     def add_parameter(self, parameter: AmberParameter):
         """Add a parameter to this group."""
         self.parameters.append(parameter)
+    
+    # These are going to be consistencies WITHIN 
+    def add_dependency(self, dependency: ParameterDependency):
+        """Add a dependency rule to this group."""
+        self.dependencies.append(dependency)
     
     def get_parameter(self, yaml_key: str) -> Optional[AmberParameter]:
         """Get parameter by YAML key."""
@@ -188,17 +203,118 @@ class ParameterGroup(BaseModel):
                 return param
         return None
     
+    # For error checking by ParameterCategory 
+    def get_parameters_by_category(self, category: ParameterCategory) -> List[AmberParameter]:
+        """Get all parameters in a specific category."""
+        return [param for param in self.parameters if param.category == category]
+
+
     def validate_config(self, config: Dict[str, Any]) -> tuple[bool, List[str]]:
-        """Validate a configuration against this group."""
+        """Check for basic consistencies like typing, ranges, valid values, etc."""
         errors = []
         
+        # First, validate individual parameters
         for param in self.parameters:
             if param.yaml_key in config:
                 is_valid, error_msg = param.validate_value(config[param.yaml_key])
                 if not is_valid:
                     errors.append(f"{param.yaml_key}: {error_msg}")
         
+        # Then, validate cross-parameter dependencies
+        dependency_errors = self.validate_dependencies(config)
+        errors.extend(dependency_errors)
+        
         return len(errors) == 0, errors
+    
+    def validate_dependencies(self, config: Dict[str, Any]) -> List[str]:
+        """Validate cross-parameter dependencies based on already chosen parameters."""
+        errors = []
+        
+        for dependency in self.dependencies:
+            # Check if condition parameter exists and matches condition value
+            condition_value = config.get(dependency.condition_param)
+            condition_param_obj = self.get_parameter(dependency.condition_param)
+            
+            # Apply default if condition parameter not set | Helpful for no-brainer parameters!
+            if condition_value is None and condition_param_obj and condition_param_obj.default_value is not None:
+                condition_value = condition_param_obj.default_value
+            
+            if condition_value == dependency.condition_value:
+                # Condition is met, check required parameter
+                required_value = config.get(dependency.required_param)
+                required_param_obj = self.get_parameter(dependency.required_param)
+                
+                if required_param_obj is None:
+                    errors.append(f"Dependency error: Required parameter '{dependency.required_param}' not found in group")
+                    continue
+                
+                # Apply default value if parameter not in config
+                if required_value is None and required_param_obj.default_value is not None:
+                    required_value = required_param_obj.default_value
+                
+                # Check dependency condition
+                if dependency.required_condition == "required":
+                    if required_value is None:
+                        errors.append(dependency.error_message)
+                elif dependency.required_condition == "required_gt_zero":
+                    if required_value is None or (isinstance(required_value, (int, float)) and required_value <= 0):
+                        errors.append(dependency.error_message)
+                elif dependency.required_condition == "must_be_zero":
+                    if required_value is not None and isinstance(required_value, (int, float)) and required_value != 0:
+                        errors.append(dependency.error_message)
+                # Add more conditions as needed
+        
+        return errors
+    
+    def validate_category_dependencies(self, config: Dict[str, Any], category: ParameterCategory) -> List[str]:
+        """
+        Validate dependencies for parameters in a specific category.
+        
+        Filters dependencies where either the condition_param or required_param belongs to the specified category.
+        """
+        errors = []
+        
+        # Filter dependencies by category
+        for dependency in self.dependencies:
+            condition_param_obj = self.get_parameter(dependency.condition_param)
+            required_param_obj = self.get_parameter(dependency.required_param)
+            
+            # Check if either parameter belongs to the specified category
+            condition_in_category = condition_param_obj and condition_param_obj.category == category
+            required_in_category = required_param_obj and required_param_obj.category == category
+            
+            if condition_in_category or required_in_category:
+                # This dependency is relevant to this category, validate it
+                condition_value = config.get(dependency.condition_param)
+                
+                # Apply default if condition parameter not set
+                if condition_value is None and condition_param_obj and condition_param_obj.default_value is not None:
+                    condition_value = condition_param_obj.default_value
+                
+                if condition_value == dependency.condition_value:
+                    # Condition is met, check required parameter
+                    required_value = config.get(dependency.required_param)
+                    
+                    if required_param_obj is None:
+                        errors.append(f"Dependency error: Required parameter '{dependency.required_param}' not found in group")
+                        continue
+                    
+                    # Apply default value if parameter not in config
+                    if required_value is None and required_param_obj.default_value is not None:
+                        required_value = required_param_obj.default_value
+                    
+                    # Check dependency condition
+                    if dependency.required_condition == "required":
+                        if required_value is None:
+                            errors.append(dependency.error_message)
+                    elif dependency.required_condition == "required_gt_zero":
+                        if required_value is None or (isinstance(required_value, (int, float)) and required_value <= 0):
+                            errors.append(dependency.error_message)
+                    elif dependency.required_condition == "must_be_zero":
+                        if required_value is not None and isinstance(required_value, (int, float)) and required_value != 0:
+                            errors.append(dependency.error_message)
+        
+        return errors
 
 
 class ParameterRegistry(BaseModel):
@@ -241,6 +357,66 @@ class ParameterRegistry(BaseModel):
         return results
 
 
+def create_workflow_parameter_group() -> ParameterGroup:
+    """Create workflow control parameter group."""
+    group = ParameterGroup(
+        name="workflow_control",
+        description="Parameters for workflow control and directory management"
+    )
+
+    # Global workflow parameters
+    # Heating control parameters
+    group.add_parameter(AmberParameter(
+        yaml_key="ramped_heating",
+        amber_flag=None,  # Workflow parameter
+        description="Enable ramped heating protocol",
+        param_type=ParameterType.BOOLEAN,
+        category=ParameterCategory.WORKFLOW,
+        default_value=False
+    ))
+    
+    group.add_parameter(AmberParameter(
+        yaml_key="ramps",
+        amber_flag=None,  # Workflow parameter
+        description="Number of heating ramps",
+        param_type=ParameterType.INT,
+        category=ParameterCategory.WORKFLOW,
+        default_value=0
+    ))
+    
+    group.add_parameter(AmberParameter(
+        yaml_key="windows",
+        amber_flag=None,  # Workflow parameter
+        description="Number of umbrella sampling windows",
+        param_type=ParameterType.INT,
+        category=ParameterCategory.WORKFLOW,
+        validation=ParameterValidation(min_value=1, max_value=100),
+        default_value=10
+    ))
+
+
+    # Universal system settings that should NOT change
+    group.add_parameter(AmberParameter(
+        yaml_key="force_field",
+        amber_flag=None,  # Workflow parameter
+        description="Force field name",
+        param_type=ParameterType.STRING,
+        category=ParameterCategory.WORKFLOW,
+        validation=ParameterValidation(valid_values=["amber", "charmm", "gromos"]),
+        default_value="amber"
+    ))
+    
+    group.add_parameter(AmberParameter(
+        yaml_key="water_model",
+        amber_flag=None,  # Workflow parameter
+        description="Water model",
+        param_type=ParameterType.STRING,
+        category=ParameterCategory.WORKFLOW,
+        validation=ParameterValidation(valid_values=["tip3p", "tip4p", "spce"]),
+        default_value="tip3p"
+    ))
+    
+    return group
 
 # Example usage and factory functions
 def create_em_parameter_group() -> ParameterGroup:
@@ -253,13 +429,13 @@ def create_em_parameter_group() -> ParameterGroup:
     
     # Add parameters
     group.add_parameter(AmberParameter(
-        yaml_key="method",
+        yaml_key="min_method",
         amber_flag="ntmin",
         description="Minimization method",
         param_type=ParameterType.INT,
         category=ParameterCategory.CONTROL,
-        validation=ParameterValidation(valid_values=[0, 1, 5, 6, 7]),
-        notes="0=Molecular Dynamics, 1=Energy Minimization, 5=CG, 6=SD+CG, 7=SD+CG+MD"
+        validation=ParameterValidation(valid_values=[0, 1, 2, 3, 4, 5]),
+        # notes="0=Molecular Dynamics, 1=Energy Minimization, 5=CG, 6=SD+CG, 7=SD+CG+MD"
     ))
     
     group.add_parameter(AmberParameter(
@@ -302,7 +478,7 @@ def create_em_parameter_group() -> ParameterGroup:
     # This is one of the things that should stay consistent through each simulation?
     group.add_parameter(AmberParameter(
         yaml_key="nonbonded_cut",
-        amber_key="cut",
+        amber_flag="cut",
         description="Nonbonded Cutoff off for VdW interactions (Å)",
         param_type=ParameterType.FLOAT, 
         category=ParameterCategory.GENERAL,
@@ -316,8 +492,18 @@ def create_nvt_parameter_group() -> ParameterGroup:
     """Create NVT ensemble parameter group."""
     group = ParameterGroup(
         name="nvt_ensemble",
-        description="Parameters for NVT ensemble simulations"
+        description="Parameters for NVT ensemble equilibrations"
     )
+
+    group.add_parameter(AmberParameter(
+        yaml_key="MD_method",
+        amber_flag="imin",
+        description="MD Method ",
+        param_type=ParameterType.INT,
+        category=ParameterCategory.CONTROL,
+        validation=ParameterValidation(valid_values=[0, 1, 5, 6, 7]),
+        notes="0=Molecular Dynamics, 1=Energy Minimization, 5=CG, 6=SD+CG, 7=SD+CG+MD"
+    ))
 
     group.add_parameter(AmberParameter(
         yaml_key="PBC_treatment",
@@ -326,7 +512,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.GENERAL,
         notes="0=No periodicity, 1=Constant Volume, 2=Constant Pressure",
-        default=1
+        default_value=1
     ))
 
     group.add_parameter(AmberParameter(
@@ -335,7 +521,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
         description="Timestep, in ps, of simulation",
         param_type=ParameterType.FLOAT,
         category=ParameterCategory.GENERAL, # NEEDS TO BE CONSISTENT THROUGHOUT SIMULATION ENSEMBLE
-        default=0.002 # BUT NOT FOR HMASS REPARTITIONING
+        default_value=0.002 # BUT NOT FOR HMASS REPARTITIONING
     ))
 
     group.add_parameter(AmberParameter(
@@ -454,69 +640,24 @@ def create_nvt_parameter_group() -> ParameterGroup:
     
     ))
 
-
-    return group
-
-
-def create_workflow_parameter_group() -> ParameterGroup:
-    """Create workflow control parameter group."""
-    group = ParameterGroup(
-        name="workflow_control",
-        description="Parameters for workflow control and directory management"
-    )
-
-    # Global workflow parameters
-    # Heating control parameters
-    group.add_parameter(AmberParameter(
-        yaml_key="ramped_heating",
-        amber_flag=None,  # Workflow parameter
-        description="Enable ramped heating protocol",
-        param_type=ParameterType.BOOLEAN,
-        category=ParameterCategory.WORKFLOW,
-        default_value=False
+    # Add THERMOSTAT category dependency rules using ParameterDependency
+    # Declarative approach: Easy to add, modify, or remove dependencies
+    group.add_dependency(ParameterDependency(
+        condition_param="thermostat",
+        condition_value=3,  # Langevin thermostat
+        required_param="Collision_frequency",
+        required_condition="required_gt_zero",
+        error_message="THERMOSTAT dependency: 'Collision_frequency' (gamma_ln) must be > 0 when using Langevin thermostat (thermostat=3)"
     ))
     
-    group.add_parameter(AmberParameter(
-        yaml_key="ramps",
-        amber_flag=None,  # Workflow parameter
-        description="Number of heating ramps",
-        param_type=ParameterType.INT,
-        category=ParameterCategory.WORKFLOW,
-        default_value=0
-    ))
-    
-    group.add_parameter(AmberParameter(
-        yaml_key="windows",
-        amber_flag=None,  # Workflow parameter
-        description="Number of umbrella sampling windows",
-        param_type=ParameterType.INT,
-        category=ParameterCategory.WORKFLOW,
-        validation=ParameterValidation(min_value=1, max_value=100),
-        default_value=10
+    group.add_dependency(ParameterDependency(
+        condition_param="thermostat",
+        condition_value=1,  # Weak coupling thermostat
+        required_param="heat_bath_coupling_constant",
+        required_condition="required_gt_zero",
+        error_message="THERMOSTAT dependency: 'heat_bath_coupling_constant' (tautp) must be > 0 when using weak coupling thermostat (thermostat=1)"
     ))
 
-
-    # Universal system settings that should NOT change
-    group.add_parameter(AmberParameter(
-        yaml_key="force_field",
-        amber_flag=None,  # Workflow parameter
-        description="Force field name",
-        param_type=ParameterType.STRING,
-        category=ParameterCategory.WORKFLOW,
-        validation=ParameterValidation(valid_values=["amber", "charmm", "gromos"]),
-        default_value="amber"
-    ))
-    
-    group.add_parameter(AmberParameter(
-        yaml_key="water_model",
-        amber_flag=None,  # Workflow parameter
-        description="Water model",
-        param_type=ParameterType.STRING,
-        category=ParameterCategory.WORKFLOW,
-        validation=ParameterValidation(valid_values=["tip3p", "tip4p", "spce"]),
-        default_value="tip3p"
-    ))
-    
     return group
 
 
@@ -545,5 +686,67 @@ if __name__ == "__main__":
     is_valid, errors = em_group.validate_config(em_config)
     print(f"Config valid: {is_valid}, Errors: {errors}")
 
-
     print(em_group.get_parameter("steps"))
+    
+    # Test THERMOSTAT dependency validation
+    print("\n" + "="*60)
+    print("THERMOSTAT Dependency Validation Examples")
+    print("="*60)
+    
+    nvt_group = registry.get_group("nvt_ensemble")
+    
+    # Example 1: Valid configuration with Langevin thermostat
+    print("\n1. Valid Langevin thermostat configuration:")
+    nvt_config_valid_langevin = {
+        "thermostat": 3,  # Langevin
+        "Collision_frequency": 5.0,  # Required and > 0
+        "temperature": 300.0
+    }
+    is_valid, errors = nvt_group.validate_config(nvt_config_valid_langevin)
+    print(f"   Valid: {is_valid}")
+    if errors:
+        print(f"   Errors: {errors}")
+    
+    # Example 2: Invalid - Langevin thermostat without collision frequency
+    print("\n2. Invalid - Langevin thermostat without collision frequency:")
+    nvt_config_invalid_langevin = {
+        "thermostat": 3,  # Langevin
+        "Collision_frequency": 0.0,  # Invalid: must be > 0
+        "temperature": 300.0
+    }
+    is_valid, errors = nvt_group.validate_config(nvt_config_invalid_langevin)
+    print(f"   Valid: {is_valid}")
+    if errors:
+        print(f"   Errors: {errors}")
+    
+    # Example 3: Valid configuration with weak coupling thermostat
+    print("\n3. Valid weak coupling thermostat configuration:")
+    nvt_config_valid_weak = {
+        "thermostat": 1,  # Weak coupling
+        "heat_bath_coupling_constant": 2.0,  # Required and > 0
+        "temperature": 300.0
+    }
+    is_valid, errors = nvt_group.validate_config(nvt_config_valid_weak)
+    print(f"   Valid: {is_valid}")
+    if errors:
+        print(f"   Errors: {errors}")
+    
+    # Example 4: Invalid - Weak coupling thermostat without heat bath constant
+    print("\n4. Invalid - Weak coupling thermostat without heat bath constant:")
+    nvt_config_invalid_weak = {
+        "thermostat": 1,  # Weak coupling
+        "heat_bath_coupling_constant": 0.0,  # Invalid: must be > 0
+        "temperature": 300.0
+    }
+    is_valid, errors = nvt_group.validate_config(nvt_config_invalid_weak)
+    print(f"   Valid: {is_valid}")
+    if errors:
+        print(f"   Errors: {errors}")
+    
+    # Example 5: Using category-specific validation
+    print("\n5. Category-specific validation (THERMOSTAT only):")
+    thermostat_errors = nvt_group.validate_category_dependencies(
+        nvt_config_invalid_langevin, 
+        ParameterCategory.THERMOSTAT
+    )
+    print(f"   THERMOSTAT category errors: {thermostat_errors}")
