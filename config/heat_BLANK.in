@@ -1,37 +1,37 @@
 Heating Stage 1 - Constant Volume heating, 50 ps  0 -> 100 K
  &cntrl
   ! General Input Controls 
-  imin=0,                   ! Run MD
-  irest={restart_sim},                  ! Restart a new simulation
-  ntx={read_prev_coordinates},                    ! Read only coordinates
-  nstlim={steps},             ! 25,000 steps = 50 picoseconds
-  dt={timestep},                 ! 2 fs timestep
-  ig=-1,                    ! RNG thingy 
+  imin={MD_method},                               ! User selects MD Method
+  irest={restart_sim},                            ! User chooses whether or not to restart from previous sim
+  ntx={read_prev_coordinates},                    ! User chooses to read coordinates and/or velocities
+  nstlim={steps},                                 ! User chooses simulation steps
+  dt={timestep},                                  ! User chooses timestep (0.002 != Hmass repart, 0.004 w/ Hmass repart)
+  ig=-1,                                          ! RNG based on computer clock time 
 
   ! Energy Function Controls 
-  ntc={SHAKE_param},                    !
-  ntf={Force_calculation},                    
-  cut={nonbonded_cut},                  ! Nonbonded cutoff 
-  ntr={restraint},                    ! Restraints present
-  restraint_wt={max_force},          ! Restraing Weight and mask
-  restraintmask=':1-RESNUM@CA,C,N,O,PA,PB,Mg,MG', ! Restraints on CA atoms only
+  ntc={SHAKE_param},                              ! SHAKE constraints (if TIP3P, NTC=NTF=2)
+  ntf={Force_calculation},                        ! Force Evaluation
+  cut={nonbonded_cut},                            ! User selects non-bonded cutoff in Angstroms
+  ntr={restraint},                                ! Restraints present (0, 1)
+  restraint_wt={max_force},                       ! Restraing Weight in kcal · mol−1 · Å−2
+  restraintmask=':1-RESNUM@CA,C,N,O,PA,PB,Mg,MG', ! String selecting atoms to restrain
  
   ! Temperature Regulation
-  tempi={initial_temperature},                ! Starting Temperature
-  temp0={final_temperature},              ! Target Temperature 
-  ntt={thermostat},                                  ! Thermostat type 
-  gamma_ln={Collision_frequency},         ! Compulsory with ntt=3
-  tautp={heat_bath_coupling_constant}     ! Compulsory with ntt=1
+  tempi={initial_temperature},                     ! Starting temperature determined by user inputs IF ramped heatings
+  temp0={final_temperature},                       ! Target temperature of final window should match production
+  ntt={thermostat},                                ! User selects thermostat
+  gamma_ln={Collision_frequency},                  ! Compulsory with ntt=3
+  tautp={heat_bath_coupling_constant}              ! Compulsory with ntt=1
 
   ! Volume Regulation 
-  ntb={PBC_treatment},                    
+  ntb={PBC_treatment},                             ! User selects how PBC should be handled and in which directions              
   
   ! Output Controls 
-  iwrap=1,                  ! Wrap atoms to primary box
-  ntpr=2500,                 ! Energy write frequency 
-  ntwx=2500,                 ! Coordinate Write Frequency (1 ps)
-  ioutfm=1,                 ! Output Format
-  ntxo=2,                   ! Restart File Format 
+  iwrap=1,                                        ! Wrap atoms to primary box
+  ntpr=2500,                                      ! Energy write frequency 
+  ntwx=2500,                                      ! Coordinate Write Frequency (1 ps)
+  ioutfm=1,                                       ! Output Format
+  ntxo=2,                                         ! Restart File Format 
   nmropt=1,
  &end
  
