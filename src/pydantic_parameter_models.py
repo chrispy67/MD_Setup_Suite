@@ -4,7 +4,7 @@ Pydantic-based parameter models with automatic validation and serialization.
 
 from pickle import FLOAT
 from unicodedata import category
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Dict, List, Optional, Any, Union, Literal
 from enum import Enum
 import json
@@ -50,9 +50,19 @@ class ParameterDependency(BaseModel):
     """Defines a dependency rule between parameters."""
     condition_param: str = Field(..., description="YAML key of the parameter that triggers the dependency")
     condition_value: Any = Field(..., description="Value that must match for dependency to be active")
-    required_param: str = Field(..., description="YAML key of the parameter that must be set/valid")
-    required_condition: str = Field(..., description="Condition: 'required', 'required_gt_zero', 'must_be_zero', etc.")
+    required_param: Optional[str] = Field(default=None, description="YAML key of the parameter that must be set/valid (single param)")
+    required_params: Optional[Dict[str, Any]] = Field(default=None, description="Dict of {param_key: expected_value} for multiple params")
+    required_condition: str = Field(..., description="Condition: 'required', 'required_gt_zero', 'must_be_zero', 'must_equal', etc.")
     error_message: str = Field(..., description="Error message if dependency is violated")
+    
+    @model_validator(mode='after')
+    def validate_required_fields(self):
+        """Ensure either required_param or required_params is set, but not both."""
+        if self.required_param is None and self.required_params is None:
+            raise ValueError("Either 'required_param' or 'required_params' must be provided")
+        if self.required_param is not None and self.required_params is not None:
+            raise ValueError("Cannot specify both 'required_param' and 'required_params'")
+        return self
 
 
 class AmberParameter(BaseModel):
@@ -235,34 +245,94 @@ class ParameterGroup(BaseModel):
             condition_value = config.get(dependency.condition_param)
             condition_param_obj = self.get_parameter(dependency.condition_param)
             
-            # Apply default if condition parameter not set | Helpful for no-brainer parameters!
+            # Apply default if condition parameter not set
             if condition_value is None and condition_param_obj and condition_param_obj.default_value is not None:
                 condition_value = condition_param_obj.default_value
             
             if condition_value == dependency.condition_value:
-                # Condition is met, check required parameter
-                required_value = config.get(dependency.required_param)
-                required_param_obj = self.get_parameter(dependency.required_param)
+                # Condition is met, check required parameter(s)
                 
-                if required_param_obj is None:
-                    errors.append(f"Dependency error: Required parameter '{dependency.required_param}' not found in group")
-                    continue
+                # Handle single parameter dependency (backward compatible)
+                if dependency.required_param:
+                    errors.extend(self._validate_single_param_dependency(
+                        dependency, config, dependency.required_param
+                    ))
                 
-                # Apply default value if parameter not in config
-                if required_value is None and required_param_obj.default_value is not None:
-                    required_value = required_param_obj.default_value
-                
-                # Check dependency condition
-                if dependency.required_condition == "required":
-                    if required_value is None:
-                        errors.append(dependency.error_message)
-                elif dependency.required_condition == "required_gt_zero":
-                    if required_value is None or (isinstance(required_value, (int, float)) and required_value <= 0):
-                        errors.append(dependency.error_message)
-                elif dependency.required_condition == "must_be_zero":
-                    if required_value is not None and isinstance(required_value, (int, float)) and required_value != 0:
-                        errors.append(dependency.error_message)
-                # Add more conditions as needed
+                # Handle multiple parameter dependencies
+                elif dependency.required_params:
+                    errors.extend(self._validate_multi_param_dependency(
+                        dependency, config, dependency.required_params
+                    ))
+        
+        return errors
+    
+    def _validate_single_param_dependency(
+        self, 
+        dependency: ParameterDependency, 
+        config: Dict[str, Any], 
+        param_key: str
+    ) -> List[str]:
+        """Validate a single parameter dependency."""
+        errors = []
+        required_value = config.get(param_key)
+        required_param_obj = self.get_parameter(param_key)
+        
+        if required_param_obj is None:
+            errors.append(f"Dependency error: Required parameter '{param_key}' not found in group")
+            return errors
+        
+        # Apply default value if parameter not in config
+        if required_value is None and required_param_obj.default_value is not None:
+            required_value = required_param_obj.default_value
+        
+        # Check dependency condition
+        if dependency.required_condition == "required":
+            if required_value is None:
+                errors.append(dependency.error_message)
+        elif dependency.required_condition == "required_gt_zero":
+            if required_value is None or (isinstance(required_value, (int, float)) and required_value <= 0):
+                errors.append(dependency.error_message)
+        elif dependency.required_condition == "must_be_zero":
+            if required_value is not None and isinstance(required_value, (int, float)) and required_value != 0:
+                errors.append(dependency.error_message)
+        elif dependency.required_condition == "must_equal":
+            # For must_equal, the expected value should be in the error message or we need to extend the model
+            # For now, we'll use a simple approach where required_params dict contains expected values
+            pass  # Handled in multi-param validation
+        
+        return errors
+    
+    def _validate_multi_param_dependency(
+        self,
+        dependency: ParameterDependency,
+        config: Dict[str, Any],
+        required_params: Dict[str, Any]
+    ) -> List[str]:
+        """Validate multiple parameter dependencies."""
+        errors = []
+        
+        for param_key, expected_value in required_params.items():
+            param_value = config.get(param_key)
+            param_obj = self.get_parameter(param_key)
+            
+            if param_obj is None:
+                errors.append(f"Dependency error: Required parameter '{param_key}' not found in group")
+                continue
+            
+            # Apply default value if parameter not in config
+            if param_value is None and param_obj.default_value is not None:
+                param_value = param_obj.default_value
+            
+            # Check condition based on required_condition type
+            if dependency.required_condition == "must_equal":
+                if param_value != expected_value:
+                    errors.append(f"{dependency.error_message} (Expected {param_key}={expected_value}, got {param_value})")
+            elif dependency.required_condition == "required":
+                if param_value is None:
+                    errors.append(f"{dependency.error_message} (Missing {param_key})")
+            elif dependency.required_condition == "required_gt_zero":
+                if param_value is None or (isinstance(param_value, (int, float)) and param_value <= 0):
+                    errors.append(f"{dependency.error_message} (Parameter {param_key} must be > 0)")
         
         return errors
     
@@ -277,7 +347,18 @@ class ParameterGroup(BaseModel):
         # Filter dependencies by category
         for dependency in self.dependencies:
             condition_param_obj = self.get_parameter(dependency.condition_param)
-            required_param_obj = self.get_parameter(dependency.required_param)
+            required_param_obj = None
+            
+            # Get required param object - handle both single and multiple params
+            if dependency.required_param: #singular
+                required_param_obj = self.get_parameter(dependency.required_param)
+            elif dependency.required_params: #plural
+                # For multiple params, check if any belong to the category
+                for param_key in dependency.required_params.keys():
+                    param_obj = self.get_parameter(param_key)
+                    if param_obj and param_obj.category == category:
+                        required_param_obj = param_obj
+                        break
             
             # Check if either parameter belongs to the specified category
             condition_in_category = condition_param_obj and condition_param_obj.category == category
@@ -292,27 +373,51 @@ class ParameterGroup(BaseModel):
                     condition_value = condition_param_obj.default_value
                 
                 if condition_value == dependency.condition_value:
-                    # Condition is met, check required parameter
-                    required_value = config.get(dependency.required_param)
+                    # Condition is met, check required parameter(s)
                     
-                    if required_param_obj is None:
-                        errors.append(f"Dependency error: Required parameter '{dependency.required_param}' not found in group")
-                        continue
+                    # Handle single parameter dependency
+                    if dependency.required_param:
+                        required_value = config.get(dependency.required_param)
+                        
+                        if required_param_obj is None:
+                            errors.append(f"Dependency error: Required parameter '{dependency.required_param}' not found in group")
+                            continue
+                        
+                        # Apply default value if parameter not in config
+                        if required_value is None and required_param_obj.default_value is not None:
+                            required_value = required_param_obj.default_value
+                        
+                        # Check dependency condition
+                        if dependency.required_condition == "required":
+                            if required_value is None:
+                                errors.append(dependency.error_message)
+                        elif dependency.required_condition == "required_gt_zero":
+                            if required_value is None or (isinstance(required_value, (int, float)) and required_value <= 0):
+                                errors.append(dependency.error_message)
+                        elif dependency.required_condition == "must_be_zero":
+                            if required_value is not None and isinstance(required_value, (int, float)) and required_value != 0:
+                                errors.append(dependency.error_message)
                     
-                    # Apply default value if parameter not in config
-                    if required_value is None and required_param_obj.default_value is not None:
-                        required_value = required_param_obj.default_value
-                    
-                    # Check dependency condition
-                    if dependency.required_condition == "required":
-                        if required_value is None:
-                            errors.append(dependency.error_message)
-                    elif dependency.required_condition == "required_gt_zero":
-                        if required_value is None or (isinstance(required_value, (int, float)) and required_value <= 0):
-                            errors.append(dependency.error_message)
-                    elif dependency.required_condition == "must_be_zero":
-                        if required_value is not None and isinstance(required_value, (int, float)) and required_value != 0:
-                            errors.append(dependency.error_message)
+                    # Handle multiple parameter dependencies
+                    elif dependency.required_params:
+                        for param_key, expected_value in dependency.required_params.items():
+                            param_obj = self.get_parameter(param_key)
+                            if param_obj and param_obj.category == category:
+                                param_value = config.get(param_key)
+                                
+                                if param_obj.default_value is not None and param_value is None:
+                                    param_value = param_obj.default_value
+                                
+                                # Check condition based on required_condition type
+                                if dependency.required_condition == "must_equal":
+                                    if param_value != expected_value:
+                                        errors.append(f"{dependency.error_message} (Expected {param_key}={expected_value}, got {param_value})")
+                                elif dependency.required_condition == "required":
+                                    if param_value is None:
+                                        errors.append(f"{dependency.error_message} (Missing {param_key})")
+                                elif dependency.required_condition == "required_gt_zero":
+                                    if param_value is None or (isinstance(param_value, (int, float)) and param_value <= 0):
+                                        errors.append(f"{dependency.error_message} (Parameter {param_key} must be > 0)")
         
         return errors
 
@@ -355,6 +460,59 @@ class ParameterRegistry(BaseModel):
                     results.append(param)
         
         return results
+
+    def add_cross_group_dependency(
+        self,
+        condition_group: str,
+        condition_param: str,
+        condition_value: Any,
+        target_group: str,
+        required_params: Dict[str, Any],
+        error_message: str
+    ):
+        """Declaratively add cross-group dependency rules."""
+        # Store in a list for validation
+        if not hasattr(self, '_cross_group_dependencies'):
+            self._cross_group_dependencies = []
+        
+        self._cross_group_dependencies.append({
+            'condition_group': condition_group,
+            'condition_param': condition_param,
+            'condition_value': condition_value,
+            'target_group': target_group,
+            'required_params': required_params,
+            'error_message': error_message
+        })
+
+    def validate_cross_group_dependencies(self, configs: Dict[str, Dict[str, Any]]) -> List[str]:
+        """Validate all registered cross-group dependencies."""
+        errors = []
+        
+        if not hasattr(self, '_cross_group_dependencies'):
+            return errors
+        
+        for dep in self._cross_group_dependencies:
+            condition_config = configs.get(dep['condition_group'], {})
+            condition_value = condition_config.get(dep['condition_param'])
+            
+            if condition_value == dep['condition_value']:
+                target_config = configs.get(dep['target_group'], {})
+                target_group = self.get_group(dep['target_group'])
+                
+                for param_key, expected_value in dep['required_params'].items():
+                    param_value = target_config.get(param_key)
+                    param_obj = target_group.get_parameter(param_key) if target_group else None
+                    
+                    if param_obj and param_obj.default_value is not None and param_value is None:
+                        param_value = param_obj.default_value
+                    
+                    if param_value != expected_value:
+                        errors.append(
+                            f"{dep['error_message']} "
+                            f"(Expected {param_key}={expected_value}, got {param_value})"
+                        )
+        
+        return errors
 
 
 def create_workflow_parameter_group() -> ParameterGroup:
@@ -412,7 +570,7 @@ def create_workflow_parameter_group() -> ParameterGroup:
         description="Water model",
         param_type=ParameterType.STRING,
         category=ParameterCategory.WORKFLOW,
-        validation=ParameterValidation(valid_values=["tip3p", "tip4p", "spce"]),
+        validation=ParameterValidation(valid_values=["TIP3P", "TIP4P", "SPCE"]),
         default_value="tip3p"
     ))
     
@@ -642,6 +800,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
 
     # Add THERMOSTAT category dependency rules using ParameterDependency
     # Declarative approach: Easy to add, modify, or remove dependencies
+    # These are for parameteres WITHIN THE SAME GROUP THAT MUST BE CONSISTENT, EASY!
     group.add_dependency(ParameterDependency(
         condition_param="thermostat",
         condition_value=3,  # Langevin thermostat
@@ -688,65 +847,109 @@ if __name__ == "__main__":
 
     print(em_group.get_parameter("steps"))
     
-    # Test THERMOSTAT dependency validation
-    print("\n" + "="*60)
-    print("THERMOSTAT Dependency Validation Examples")
-    print("="*60)
-    
-    nvt_group = registry.get_group("nvt_ensemble")
-    
-    # Example 1: Valid configuration with Langevin thermostat
-    print("\n1. Valid Langevin thermostat configuration:")
-    nvt_config_valid_langevin = {
-        "thermostat": 3,  # Langevin
-        "Collision_frequency": 5.0,  # Required and > 0
-        "temperature": 300.0
+
+    shake_config = {
+        "Force_calculation": 2,
+        "SHAKE_param": 2,
+        "water_model": "SPCE"
     }
-    is_valid, errors = nvt_group.validate_config(nvt_config_valid_langevin)
-    print(f"   Valid: {is_valid}")
-    if errors:
-        print(f"   Errors: {errors}")
-    
-    # Example 2: Invalid - Langevin thermostat without collision frequency
-    print("\n2. Invalid - Langevin thermostat without collision frequency:")
-    nvt_config_invalid_langevin = {
-        "thermostat": 3,  # Langevin
-        "Collision_frequency": 0.0,  # Invalid: must be > 0
-        "temperature": 300.0
-    }
-    is_valid, errors = nvt_group.validate_config(nvt_config_invalid_langevin)
-    print(f"   Valid: {is_valid}")
-    if errors:
-        print(f"   Errors: {errors}")
-    
-    # Example 3: Valid configuration with weak coupling thermostat
-    print("\n3. Valid weak coupling thermostat configuration:")
-    nvt_config_valid_weak = {
-        "thermostat": 1,  # Weak coupling
-        "heat_bath_coupling_constant": 2.0,  # Required and > 0
-        "temperature": 300.0
-    }
-    is_valid, errors = nvt_group.validate_config(nvt_config_valid_weak)
-    print(f"   Valid: {is_valid}")
-    if errors:
-        print(f"   Errors: {errors}")
-    
-    # Example 4: Invalid - Weak coupling thermostat without heat bath constant
-    print("\n4. Invalid - Weak coupling thermostat without heat bath constant:")
-    nvt_config_invalid_weak = {
-        "thermostat": 1,  # Weak coupling
-        "heat_bath_coupling_constant": 0.0,  # Invalid: must be > 0
-        "temperature": 300.0
-    }
-    is_valid, errors = nvt_group.validate_config(nvt_config_invalid_weak)
-    print(f"   Valid: {is_valid}")
-    if errors:
-        print(f"   Errors: {errors}")
-    
-    # Example 5: Using category-specific validation
-    print("\n5. Category-specific validation (THERMOSTAT only):")
-    thermostat_errors = nvt_group.validate_category_dependencies(
-        nvt_config_invalid_langevin, 
-        ParameterCategory.THERMOSTAT
+
+    # Example of cross-group dependency 
+    # Set up cross-group dependency: TIP3P water model requires NTF=2 and NTC=2
+
+    # this is something that I would need to do when checking the consistency of parameters BETWEEN GROUPS
+    # such as time step for NVT/NPT MUST EQUAL TIMESTEP FOR PROD!
+    registry.add_cross_group_dependency(
+        condition_group="workflow_control",
+        condition_param="water_model",
+        condition_value="tip3p",  # Note: lowercase to match validation
+        target_group="nvt_ensemble",
+        required_params={"Force_calculation": 2, "SHAKE_param": 2},
+        error_message="TIP3P Water Model requires NTF=NTC=2!"
     )
-    print(f"   THERMOSTAT category errors: {thermostat_errors}")
+
+    # Add cross-group dependency tests after Example 5 (around line 924):
+    print("\n" + "="*60)
+    print("CROSS-GROUP Dependency Validation Examples (TIP3P)")
+    print("="*60)
+
+    # Example 6: Valid - TIP3P with correct NTF=2 and NTC=2
+    print("\n6. Valid - TIP3P water model with NTF=2 and NTC=2:")
+    workflow_config_valid = {
+        "water_model": "tip3p",
+        "force_field": "amber",
+        "windows": 10
+    }
+    nvt_config_valid_tip3p = {
+        "Force_calculation": 2,  # NTF=2 ✓
+        "SHAKE_param": 2,  # NTC=2 ✓
+        "thermostat": 3,
+        "temperature": 300.0
+    }
+    all_configs_valid = {
+        "workflow_control": workflow_config_valid,
+        "nvt_ensemble": nvt_config_valid_tip3p
+    }
+    cross_errors = registry.validate_cross_group_dependencies(all_configs_valid)
+    print(f"   Valid: {len(cross_errors) == 0}")
+    if cross_errors:
+        print(f"   Errors: {cross_errors}")
+
+    # Example 7: Invalid - TIP3P with wrong NTF (should be 2, got 1)
+    print("\n7. Invalid - TIP3P water model with NTF=1 (should be 2):")
+    workflow_config_tip3p = {
+        "water_model": "tip3p",
+        "force_field": "amber"
+    }
+    nvt_config_invalid_ntf = {
+        "Force_calculation": 1,  # NTF=1 ✗ (should be 2)
+        "SHAKE_param": 2,  # NTC=2 ✓
+        "thermostat": 3,
+        "temperature": 300.0
+    }
+    all_configs_invalid_ntf = {
+        "workflow_control": workflow_config_tip3p,
+        "nvt_ensemble": nvt_config_invalid_ntf
+    }
+    cross_errors = registry.validate_cross_group_dependencies(all_configs_invalid_ntf)
+    print(f"   Valid: {len(cross_errors) == 0}")
+    if cross_errors:
+        print(f"   Errors: {cross_errors}")
+
+    # Example 8: Invalid - TIP3P with wrong NTC (should be 2, got 1)
+    print("\n8. Invalid - TIP3P water model with NTC=1 (should be 2):")
+    nvt_config_invalid_ntc = {
+        "Force_calculation": 2,  # NTF=2 ✓
+        "SHAKE_param": 1,  # NTC=1 ✗ (should be 2)
+        "thermostat": 3,
+        "temperature": 300.0
+    }
+    all_configs_invalid_ntc = {
+        "workflow_control": workflow_config_tip3p,
+        "nvt_ensemble": nvt_config_invalid_ntc
+    }
+    cross_errors = registry.validate_cross_group_dependencies(all_configs_invalid_ntc)
+    print(f"   Valid: {len(cross_errors) == 0}")
+    if cross_errors:
+        print(f"   Errors: {cross_errors}")
+
+    # Example 9: Valid - SPCE water model (no restrictions)
+    print("\n9. Valid - SPCE water model (no TIP3P restrictions):")
+    workflow_config_spce = {
+        "water_model": "spce",
+        "force_field": "amber"
+    }
+    nvt_config_spce = {
+        "Force_calculation": 1,  # Can be any value for SPCE
+        "SHAKE_param": 1,  # Can be any value for SPCE
+        "thermostat": 3,
+        "temperature": 300.0
+    }
+    all_configs_spce = {
+        "workflow_control": workflow_config_spce,
+        "nvt_ensemble": nvt_config_spce
+    }
+    cross_errors = registry.validate_cross_group_dependencies(all_configs_spce)
+    print(f"   Valid: {len(cross_errors) == 0}")
+    if cross_errors:
+        print(f"   Errors: {cross_errors}")
