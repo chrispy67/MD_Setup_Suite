@@ -153,7 +153,7 @@ class AmberParameter(BaseModel):
     
     def _validate_with_rules(self, value: Any) -> tuple[bool, str]:
         """Validate value against custom rules."""
-        # Here I want to check consistencies across simulation groups. 
+        # All this does is enforce basic rules that AMBER will generally catch, but MDSS should intervene
         if not self.validation:
             return True, "Valid"
         
@@ -336,6 +336,7 @@ class ParameterGroup(BaseModel):
         
         return errors
     
+    # This is the main function that checks for a cross depenency or cross dependenCIES BETWEEN GROUPS
     def validate_category_dependencies(self, config: Dict[str, Any], category: ParameterCategory) -> List[str]:
         """
         Validate dependencies for parameters in a specific category.
@@ -818,6 +819,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
     ))
 
     return group
+
 
 
 # Example usage
