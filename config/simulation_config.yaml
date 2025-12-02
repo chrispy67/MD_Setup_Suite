@@ -49,7 +49,7 @@ simulations:
     method: "steepest_descent"
     restart: False
     steps: 100000
-    # timestep: 0.004
+    timestep: 0.004
     output_frequency: 50 # output control to be piped to amber
 
     nonbonded_cut: 10.0 # Angstrom
@@ -61,14 +61,16 @@ simulations:
   NVT_ensemble: #NVT
     subdirectory: "./simulations/equil/NVT" #This is the subdirectory that will be created within each simulation window
     name: "NVT_Equilibration"
-    thermostat: "Bussi" # Multiple options here that map to different positional args
+    thermostat: 2 # Multiple options here that map to different positional args
+    Force_calculation: 2
+
     ramped_heating: True # We can use the status of this flag to build subdirectories and file inputs
     ramps: 5 # Childers usually does multiple rounds of heating
     initial_temperature: 0.0
     final_temperature: 300.0
 
     steps: 100000 # steps per ramp
-    timestep: 0.004 #ps
+    # timestep: 0.004 #ps
     hmass_repart: false
     nonbonded_cut: 10.0 
     output_frequency: 1000
@@ -80,15 +82,22 @@ simulations:
   NPT_ensemble:
     subdirectory: "./simulations/equil/NPT" # This is the subdirectory that will be created within each simulation window
     name: "NPT_Equilibration"
-    barostat: "Parrinello-Rahman"
-    restart: True
+    
+    pressure_control: 0 # 0=No pressure control, 1=Isotropic, 2=Anisotropic, 3=Semi-isotropic, 4=MD to target volume (REMD)
+    barostat: 0
+
+    target_pressure: 1.0 # IN BAR
+    pressure_scaling_factor: 1.0
+    Anisotropy_Direction: 0
+
+    restart: False
     temperature: 310.0
     SHAKE: True
 
     steps: 1000000
     timestep: 0.004
     hmass_repart: false
-    nonbonded_cut: 10.0
+    nonbonded_cut: 9.0
     output_frequency: 1000
 
     restraint: True
@@ -110,26 +119,5 @@ simulations:
     restraint: False
     restraint_weight: 0 
     restraint_string: ""
-
-# File templates configuration
-templates:
-  amber_md_input:
-    path: "templates/amber_md.in"
-    variables:
-      - "system_name"
-      - "temperature"
-      - "pressure"
-      - "steps"
-      - "timestep"
-      - "output_frequency"
-      
-  slurm_job:
-    path: "templates/job.slurm"
-    variables:
-      - "system_name"
-      - "nodes"
-      - "cpus_per_node"
-      - "memory_gb"
-      - "walltime"
 
 
