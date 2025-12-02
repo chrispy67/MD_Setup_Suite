@@ -62,7 +62,7 @@ def create_workflow_parameter_group() -> ParameterGroup:
         param_type=ParameterType.STRING,
         category=ParameterCategory.WORKFLOW,
         validation=ParameterValidation(valid_values=["TIP3P", "TIP4P", "SPCE"]),
-        default_value="tip3p"
+        default_value="TIP3P"
     ))
     
     return group

@@ -67,7 +67,31 @@ class ParameterGroup(BaseModel):
             if condition_value is None and condition_param_obj and condition_param_obj.default_value is not None:
                 condition_value = condition_param_obj.default_value
             
-            if condition_value == dependency.condition_value:
+            # Normalize condition_value if it's a string parameter with valid_values
+            if condition_param_obj and isinstance(condition_value, str):
+                # Use the parameter's conversion method to normalize the value
+                try:
+                    condition_value = condition_param_obj._convert_value(condition_value)
+                except (ValueError, TypeError):
+                    pass  # If conversion fails, use original value
+            
+            # Support both single values and arrays of possible values
+            condition_matches = False
+            if isinstance(dependency.condition_value, list):
+                # Case-insensitive comparison for string lists
+                if all(isinstance(v, str) for v in dependency.condition_value) and isinstance(condition_value, str):
+                    normalized_list = [str(v).upper() for v in dependency.condition_value]
+                    condition_matches = str(condition_value).upper() in normalized_list
+                else:
+                    condition_matches = condition_value in dependency.condition_value
+            else:
+                # Case-insensitive comparison for strings
+                if isinstance(condition_value, str) and isinstance(dependency.condition_value, str):
+                    condition_matches = str(condition_value).upper() == str(dependency.condition_value).upper()
+                else:
+                    condition_matches = condition_value == dependency.condition_value
+            
+            if condition_matches:
                 # Condition is met, check required parameter(s)
                 
                 # Handle single parameter dependency (backward compatible)
@@ -191,7 +215,31 @@ class ParameterGroup(BaseModel):
                 if condition_value is None and condition_param_obj and condition_param_obj.default_value is not None:
                     condition_value = condition_param_obj.default_value
                 
-                if condition_value == dependency.condition_value:
+                # Normalize condition_value if it's a string parameter with valid_values
+                if condition_param_obj and isinstance(condition_value, str):
+                    # Use the parameter's conversion method to normalize the value
+                    try:
+                        condition_value = condition_param_obj._convert_value(condition_value)
+                    except (ValueError, TypeError):
+                        pass  # If conversion fails, use original value
+                
+                # Support both single values and arrays of possible values
+                condition_matches = False
+                if isinstance(dependency.condition_value, list):
+                    # Case-insensitive comparison for string lists
+                    if all(isinstance(v, str) for v in dependency.condition_value) and isinstance(condition_value, str):
+                        normalized_list = [str(v).upper() for v in dependency.condition_value]
+                        condition_matches = str(condition_value).upper() in normalized_list
+                    else:
+                        condition_matches = condition_value in dependency.condition_value
+                else:
+                    # Case-insensitive comparison for strings
+                    if isinstance(condition_value, str) and isinstance(dependency.condition_value, str):
+                        condition_matches = str(condition_value).upper() == str(dependency.condition_value).upper()
+                    else:
+                        condition_matches = condition_value == dependency.condition_value
+                
+                if condition_matches:
                     # Condition is met, check required parameter(s)
                     
                     # Handle single parameter dependency

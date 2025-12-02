@@ -72,7 +72,13 @@ class AmberParameter(BaseModel):
         elif self.param_type == ParameterType.FLOAT:
             return float(value)
         elif self.param_type == ParameterType.STRING:
-            return str(value)
+            str_value = str(value)
+            # Normalize to uppercase if valid_values are defined and all are strings
+            if (self.validation and 
+                self.validation.valid_values is not None and
+                all(isinstance(v, str) for v in self.validation.valid_values)):
+                return str_value.upper()
+            return str_value
         elif self.param_type == ParameterType.LIST:
             if isinstance(value, list):
                 return value
@@ -109,8 +115,15 @@ class AmberParameter(BaseModel):
             return False, f"Value {value} is above maximum {self.validation.max_value}"
         
         # Valid values validation
-        if self.validation.valid_values is not None and value not in self.validation.valid_values:
-            return False, f"Value {value} not in valid values: {self.validation.valid_values}"
+        if self.validation.valid_values is not None:
+            # Case-insensitive comparison for string parameters
+            if self.param_type == ParameterType.STRING and all(isinstance(v, str) for v in self.validation.valid_values):
+                value_upper = str(value).upper()
+                valid_values_upper = [str(v).upper() for v in self.validation.valid_values]
+                if value_upper not in valid_values_upper:
+                    return False, f"Value {value} not in valid values: {self.validation.valid_values}"
+            elif value not in self.validation.valid_values:
+                return False, f"Value {value} not in valid values: {self.validation.valid_values}"
         
         return True, "Valid"
     
