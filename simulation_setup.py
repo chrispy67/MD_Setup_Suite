@@ -13,7 +13,8 @@ from src.parameter_groups import (
     create_em_parameter_group,
     create_nvt_parameter_group,
     create_workflow_parameter_group,
-    create_npt_parameter_group
+    create_npt_parameter_group,
+    create_production_parameter_group
 )
 
 # Set up logging
@@ -58,10 +59,13 @@ def main(cfg):
 
     # # Build registry and validate configuration
     registry = ParameterRegistry()
+    
+    registry.add_group(create_workflow_parameter_group())
     registry.add_group(create_em_parameter_group())
     registry.add_group(create_nvt_parameter_group())
     registry.add_group(create_npt_parameter_group())
-    registry.add_group(create_workflow_parameter_group())
+    registry.add_group(create_production_parameter_group())
+
 
 
     workflow_group = registry.get_group("workflow")
@@ -137,32 +141,67 @@ def main(cfg):
     # This would be an example of BAD SCIENCE that AMBER would be completely complacent in doing. 
     # what else can we add here?
     # Is there an easier way to check consistencies between ALL groups? This is what it takes to check timestep consistency through an entire workup
-    registry.add_cross_group_dependency(
-        condition_group="energy_minimization",
-        condition_param="nonbonded_cut",
-        condition_value=em_config.get("nonbonded_cut"),
-        target_group="nvt_ensemble",
-        required_params={"nonbonded_cut": em_config.get("nonbonded_cut"),},
-        error_message="All simulations must use the same nonbonded cutoff(Å)!!"
-    )
+        
+    # Check nonbonded_cut consistency across all relevant groups in sequence
 
-    registry.add_cross_group_dependency(
-        condition_group="nvt_ensemble",
-        condition_param="nonbonded_cut",
-        condition_value=nvt_config.get("nonbonded_cut"),
-        target_group="npt_ensemble",
-        required_params={"nonbonded_cut": nvt_config.get("nonbonded_cut"),},
-        error_message="All simulations must use the same nonbonded cutoff(Å)!!"
-    )
+        # em -> nvt -> npt -> prod
+    # registry.add_cross_group_dependency(
+    #     condition_group="energy_minimization",
+    #     condition_param="nonbonded_cut",
+    #     condition_value=em_config.get("nonbonded_cut"),
+    #     target_group="nvt_ensemble",
+    #     required_params={"nonbonded_cut": em_config.get("nonbonded_cut"),},
+    #     error_message="All simulations must use the same nonbonded cutoff(Å)!!"
+    # )
+    # # nvt -> npt
+    # registry.add_cross_group_dependency(
+    #     condition_group="nvt_ensemble",
+    #     condition_param="nonbonded_cut",
+    #     condition_value=nvt_config.get("nonbonded_cut"),
+    #     target_group="npt_ensemble",
+    #     required_params={"nonbonded_cut": nvt_config.get("nonbonded_cut"),},
+    #     error_message="All simulations must use the same nonbonded cutoff(Å)!!"
+    # )
+    # # npt -> prod
+    # registry.add_cross_group_dependency(
+    #     condition_group="npt_ensemble",
+    #     condition_param="nonbonded_cut",
+    #     condition_value=npt_config.get("nonbonded_cut"),
+    #     target_group="production",
+    #     required_params={"nonbonded_cut": npt_config.get("nonbonded_cut"),},
+    #     error_message="All simulations must use the same nonbonded cutoff(Å)!!"
+    # )
 
-    registry.add_cross_group_dependency(
-        condition_group="npt_ensemble",
-        condition_param="nonbonded_cut",
-        condition_value=npt_config.get("nonbonded_cut"),
-        target_group="production",
-        required_params={"nonbonded_cut": npt_config.get("nonbonded_cut"),},
-        error_message="All simulations must use the same nonbonded cutoff(Å)!!"
-    )
+    
+    selected_workflow_groups = [
+        "energy_minimization",
+        "nvt_ensemble",
+        "npt_ensemble",
+        "production"
+    ]
+    # You may need to add 'production' config to your configs dict if it's not present
+    group_configs = {
+        "energy_minimization": em_config,
+        "nvt_ensemble": nvt_config,
+        "npt_ensemble": npt_config,
+        # "production": prod_config,  # Uncomment or define accordingly if needed
+    }
+
+    # More elegant approach to check consistencies between all groups in a sequence
+    for i in range(len(selected_workflow_groups) - 1):
+        src = selected_workflow_groups[i]
+        tgt = selected_workflow_groups[i + 1]
+        src_config = group_configs.get(src, {})
+        cutoff = src_config.get("nonbonded_cut")
+        if cutoff is not None:
+            registry.add_cross_group_dependency(
+                condition_group=src,
+                condition_param="nonbonded_cut",
+                condition_value=cutoff,
+                target_group=tgt,
+                required_params={"nonbonded_cut": cutoff},
+                error_message="All simulations must use the same nonbonded cutoff(Å)!!"
+            )
 
     configs = {
         "energy_minimization": em_config,
