@@ -67,7 +67,6 @@ def main(cfg):
     registry.add_group(create_production_parameter_group())
 
 
-
     workflow_group = registry.get_group("workflow")
     workflow_config = OmegaConf.to_container(cfg["global"], resolve=True)
     
@@ -120,11 +119,43 @@ def main(cfg):
     else:
         print("✅ NPT configuration valid")
 
+
+    production_group = registry.get_group("production_ensemble")
+    production_config = OmegaConf.to_container(cfg.simulations.production, resolve=True)
+    is_valid, errors = production_group.validate_config(production_config)
+
+    if not is_valid:
+        print("❌ Production configuration errors:")
+        for error in errors:
+            print(f"  - {error}")
+        # return
+    else:
+        print("✅ Production configuration valid")
+
+
+    # THIS ORDER WILL CHANGE IN THE FUTURE TO BE MORE FLEXIBLE
+    # for example, users could select em -> npt -> nvt -> production, em -> nvt -> production, etc. 
+    selected_simulation_ensemble = [
+        "energy_minimization",
+        "nvt_ensemble",
+        "npt_ensemble",
+        "production"
+    ]
+
+    # Group configs is a dictionary of the configuration for each group, INCLUDING workflow 
+    group_configs = {
+        "workflow": workflow_config,  # Workflow is still a parameter group that is used to setup directories, fundamentals of simulation, etc. 
+        "energy_minimization": em_config,
+        "nvt_ensemble": nvt_config,
+        "npt_ensemble": npt_config,
+        "production": production_config,  # Uncomment or define accordingly if needed
+    }
+
     # Simple example of a cross-group dependency for a method to be correct
     # auto_apply_defaults=True means: show warning and automatically apply required values
     # many of these can and will be caught by AMBER, but this is a better way to catch errors before you do a bunch of simulations
     registry.add_cross_group_dependency(
-        condition_group="workflow", # groups are workflow, energy_minimization, nvt_ensemble SO FAR
+        condition_group="workflow", 
         condition_param="water_model",
         condition_value="tip3p", 
         target_group="nvt_ensemble",
@@ -133,84 +164,61 @@ def main(cfg):
         auto_apply_defaults=True  # Auto-apply defaults and show warnings instead of errors
     )
 
+    # While the timestep is checked for consistency throughout the ensemble, this would be the first opprotunity to check for hmass repartitioning
+    registry.add_cross_group_dependency(
+        condition_group="workflow",
+        condition_param="hmass_repart",
+        condition_value=True,
+        target_group="energy_minimization",
+        required_params={"timestep": 0.004},
+        error_message="Hydrogen mass repartitioning is primarily used with a 4 femtosecond timestep"
+    )
 
     # To enforce that nvt_ensemble.cut matches energy_minimization.nonbonded_cut
     # (i.e., the 'cut' parameter in nvt_ensemble equals 'nonbonded_cut' in energy_minimization),
     # you should fetch the configured value for energy_minimization.nonbonded_cut and use it as condition_value.
 
     # This would be an example of BAD SCIENCE that AMBER would be completely complacent in doing. 
-    # what else can we add here?
-    # Is there an easier way to check consistencies between ALL groups? This is what it takes to check timestep consistency through an entire workup
-        
-    # Check nonbonded_cut consistency across all relevant groups in sequence
-
-        # em -> nvt -> npt -> prod
-    # registry.add_cross_group_dependency(
-    #     condition_group="energy_minimization",
-    #     condition_param="nonbonded_cut",
-    #     condition_value=em_config.get("nonbonded_cut"),
-    #     target_group="nvt_ensemble",
-    #     required_params={"nonbonded_cut": em_config.get("nonbonded_cut"),},
-    #     error_message="All simulations must use the same nonbonded cutoff(Å)!!"
-    # )
-    # # nvt -> npt
-    # registry.add_cross_group_dependency(
-    #     condition_group="nvt_ensemble",
-    #     condition_param="nonbonded_cut",
-    #     condition_value=nvt_config.get("nonbonded_cut"),
-    #     target_group="npt_ensemble",
-    #     required_params={"nonbonded_cut": nvt_config.get("nonbonded_cut"),},
-    #     error_message="All simulations must use the same nonbonded cutoff(Å)!!"
-    # )
-    # # npt -> prod
-    # registry.add_cross_group_dependency(
-    #     condition_group="npt_ensemble",
-    #     condition_param="nonbonded_cut",
-    #     condition_value=npt_config.get("nonbonded_cut"),
-    #     target_group="production",
-    #     required_params={"nonbonded_cut": npt_config.get("nonbonded_cut"),},
-    #     error_message="All simulations must use the same nonbonded cutoff(Å)!!"
-    # )
-
-    
-    selected_workflow_groups = [
-        "energy_minimization",
-        "nvt_ensemble",
-        "npt_ensemble",
-        "production"
-    ]
-    # You may need to add 'production' config to your configs dict if it's not present
-    group_configs = {
-        "energy_minimization": em_config,
-        "nvt_ensemble": nvt_config,
-        "npt_ensemble": npt_config,
-        # "production": prod_config,  # Uncomment or define accordingly if needed
-    }
 
     # More elegant approach to check consistencies between all groups in a sequence
-    for i in range(len(selected_workflow_groups) - 1):
-        src = selected_workflow_groups[i]
-        tgt = selected_workflow_groups[i + 1]
+    for i in range(len(selected_simulation_ensemble) - 1):
+        src = selected_simulation_ensemble[i]
+        tgt = selected_simulation_ensemble[i + 1]
+
+        tgt_config = group_configs.get(tgt, {})
         src_config = group_configs.get(src, {})
         cutoff = src_config.get("nonbonded_cut")
+
         if cutoff is not None:
             registry.add_cross_group_dependency(
                 condition_group=src,
                 condition_param="nonbonded_cut",
-                condition_value=cutoff,
+                condition_value=src_config.get("nonbonded_cut"),
                 target_group=tgt,
-                required_params={"nonbonded_cut": cutoff},
-                error_message="All simulations must use the same nonbonded cutoff(Å)!!"
+                required_params={"nonbonded_cut": src_config.get("nonbonded_cut")},
+                error_message=f"Inconsistencies with nonbonded cutoff used to calculate nonbonded interactions! |  {src} is {src_config.get('nonbonded_cut')}Å and {tgt} is {tgt_config.get('nonbonded_cut')}Å"
             )
 
-    configs = {
-        "energy_minimization": em_config,
-        "workflow": workflow_config,
-        "nvt_ensemble": nvt_config,
-        "npt_ensemble": npt_config,
-    }
-    
-    cross_group_errors, cross_group_warnings = registry.validate_cross_group_dependencies(configs)
+    for i in range(len(selected_simulation_ensemble) - 1):
+        src = selected_simulation_ensemble[i]
+        tgt = selected_simulation_ensemble[i + 1]
+
+        tgt_config = group_configs.get(tgt, {})
+        src_config = group_configs.get(src, {})
+        timestep = src_config.get("timestep")
+
+        if timestep is not None:
+            registry.add_cross_group_dependency(
+                condition_group=src,
+                condition_param="timestep",
+                condition_value=src_config.get("timestep"),
+                target_group=tgt,
+                required_params={"timestep": src_config.get("timestep")},
+                error_message=f"All simulations must use the same timestep (ps)! |  {src} is {src_config.get('timestep')}ps and {tgt} is {tgt_config.get('timestep')}ps"
+            )
+
+
+    cross_group_errors, cross_group_warnings = registry.validate_cross_group_dependencies(group_configs)
     
     if cross_group_warnings:
         print("⚠️  Cross-group dependency warnings (auto-applied defaults):")
