@@ -13,6 +13,21 @@ def create_em_parameter_group() -> ParameterGroup:
         description="Parameters for energy minimization protocol for simulations"
     )
     
+    group.add_parameter(AmberParameter(
+        yaml_key="MD_method",
+        amber_flag="imin",
+        description="Method to be used for production simulations",
+        param_type=ParameterType.INT,
+        category=ParameterCategory.CONTROL,
+        validation=ParameterValidation(valid_values=[0, 1, 5, 6, 7]),
+        default_value=1, # for minimization this is true
+        notes="""0=Molecular Dynamics, 
+        1=Energy Minimization, 
+        5=Read in trajectory for analysis using minimization algorithms, 
+        6=Read in trajectory for molecular dynamics driver, 
+        7=????"""
+    ))
+
     # Add parameters
     group.add_parameter(AmberParameter(
         yaml_key="min_method",
@@ -21,7 +36,14 @@ def create_em_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.CONTROL,
         validation=ParameterValidation(valid_values=[0, 1, 2, 3, 4, 5]),
-        # notes="0=Molecular Dynamics, 1=Energy Minimization, 5=CG, 6=SD+CG, 7=SD+CG+MD"
+        default_value=1,
+        notes="""0=Full conjugate gradient minimization 
+                1=For{maxcyc} cycles, steepest descent method is used, then conjugate gradient is switched on
+                2=Steepest Descent only
+                3=XMIN method is used 
+                4=LMOD method is used
+                5=DL=Find module is used
+                """
     ))
     
     group.add_parameter(AmberParameter(
@@ -30,12 +52,12 @@ def create_em_parameter_group() -> ParameterGroup:
         description="Maximum number of minimization cycles",
         param_type=ParameterType.INT,
         category=ParameterCategory.CONTROL,
-        validation=ParameterValidation(min_value=1, max_value=10000000),
+        validation=ParameterValidation(min_value=1, max_value=1000000),
         default_value=1000
     ))
     
     group.add_parameter(AmberParameter(
-        yaml_key="restraint",
+        yaml_key="restraint", #this boolean will translate when filling out files
         amber_flag="ntr",
         description="Enable positional restraints",
         param_type=ParameterType.BOOLEAN,

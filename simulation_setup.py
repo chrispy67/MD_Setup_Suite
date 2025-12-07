@@ -16,6 +16,7 @@ from src.parameter_groups import (
     create_npt_parameter_group,
     create_production_parameter_group
 )
+from src.utils.parameter_display import display_parameter_summary
 
 # Set up logging
 import logging
@@ -86,7 +87,6 @@ def main(cfg):
     else:
         print("✅ Workflow configuration valid")
 
-
     # Validate EM parameters
     em_group = registry.get_group("energy_minimization")
     em_config = OmegaConf.to_container(cfg.simulations.em, resolve=True)
@@ -99,6 +99,15 @@ def main(cfg):
         # return
     else:
         print("✅ EM configuration valid")
+    
+    # Display EM parameter summary
+    display_parameter_summary(
+        group=em_group,
+        config=em_config,
+        show_only_set=True,
+        group_by_category=True,
+        title="Energy Minimization Parameters"
+    )
 
 # # Validate NVT parameters
     nvt_group = registry.get_group("nvt_ensemble")    
