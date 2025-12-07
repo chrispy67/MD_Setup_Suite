@@ -42,19 +42,26 @@ def main(cfg):
     base_path = Path(cfg.directories.base_path)
     
     # # Example usage - build directories for a system
-    system_name = "my_protein" 
+    system_name = "1pdb" 
     optional_string = ""  # Leave empty string if you don't want the optional part in the directory names
 
     # # Build directories for ALL windows (umbrella sampling)
     print(f"Creating directories for {cfg['global']['windows']} windows...")
-    # created_dirs = setup.build_directories( # This will throw an error if the direcotries already exist TODO: Error handle for if a user wants to overwrite, startover, edit, etc. 
-    #     system_name=system_name,
-    #     window_num=None,  # None means create all windows
-    #     optional=optional_string # 
-    # )
-    # print(f"\nCreated simulation directory structures:")
-    # for i, dir_path in enumerate(created_dirs, 0):
-    #     print(f"  Window {i}: {dir_path}")
+    created_dirs = setup.build_directories(
+        system_name=system_name,
+        window_num=None,  # None means create all windows
+        optional=optional_string
+    )
+    
+    if created_dirs:
+        print(f"\nCreated simulation directory structures:")
+        if isinstance(created_dirs, list):
+            for i, dir_path in enumerate(created_dirs, 0):
+                print(f"  Window {i}: {dir_path}")
+        else:
+            print(f"  {created_dirs}")
+    else:
+        print("\n⚠️  No directories were created (skipped by user or already exist).")
 
 
     # # Build registry and validate configuration
