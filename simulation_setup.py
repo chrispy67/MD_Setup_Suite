@@ -87,6 +87,14 @@ def main(cfg):
     else:
         print("✅ Workflow configuration valid")
 
+    display_parameter_summary(
+        group=workflow_group, # registry group with associated metadata, defaults, and validation
+        config=workflow_config, #config dictionary with stored, RUNTIME values passed by user
+        show_only_set=True,
+        group_by_category=True,
+        title="Workflow Parameters"
+    )
+
     # Validate EM parameters
     em_group = registry.get_group("energy_minimization")
     em_config = OmegaConf.to_container(cfg.simulations.em, resolve=True)
@@ -102,8 +110,8 @@ def main(cfg):
     
     # Display EM parameter summary
     display_parameter_summary(
-        group=em_group,
-        config=em_config,
+        group=em_group, # registry group with associated metadata, defaults, and validation
+        config=em_config, #config dictionary with stored, RUNTIME values passed by user
         show_only_set=True,
         group_by_category=True,
         title="Energy Minimization Parameters"
@@ -122,6 +130,15 @@ def main(cfg):
     else:
         print("✅ NVT configuration valid")
 
+    # Display NVT parameter summary
+    display_parameter_summary(
+        group=nvt_group, # registry group with associated metadata, defaults, and validation
+        config=nvt_config, #config dictionary with stored, RUNTIME values passed by user
+        show_only_set=True,
+        group_by_category=True,
+        title="NVT Ensemble Parameters"
+    )
+
 
     npt_group = registry.get_group("npt_ensemble")
     npt_config = OmegaConf.to_container(cfg.simulations.NPT_ensemble, resolve=True)
@@ -135,6 +152,14 @@ def main(cfg):
     else:
         print("✅ NPT configuration valid")
 
+    # Display NPT parameter summary
+    display_parameter_summary(
+        group=npt_group, # registry group with associated metadata, defaults, and validation
+        config=npt_config, #config dictionary with stored, RUNTIME values passed by user
+        show_only_set=True,
+        group_by_category=True,
+        title="NPT Ensemble Parameters"
+    )
 
     production_group = registry.get_group("production_ensemble")
     production_config = OmegaConf.to_container(cfg.simulations.production, resolve=True)
