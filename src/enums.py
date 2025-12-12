@@ -11,6 +11,7 @@ class ParameterType(str, Enum):
     BOOLEAN = "bool"
     LIST = "list"
     DICT = "dict"
+    RESTRAINT_STRING_ARRAY = "restraint_string_array"
 
 
 class ParameterCategory(str, Enum):
