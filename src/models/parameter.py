@@ -97,6 +97,36 @@ class AmberParameter(BaseModel):
                 except json.JSONDecodeError:
                     return {"value": value}
             return {"value": value}
+        elif self.param_type == ParameterType.RESTRAINT_STRING_ARRAY:
+            # Handle arrays of restraint strings for AMBER atom selection rules
+            if isinstance(value, list):
+                # Filter out empty strings and validate all items are strings
+                filtered = [item for item in value if item]
+                if not all(isinstance(item, str) for item in filtered):
+                    raise ValueError("All items in restraint_string_array must be strings")
+                return filtered
+            if isinstance(value, str):
+                # Empty string should return empty list
+                if not value.strip():
+                    return []
+                # Try to parse as JSON array first
+                try:
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        # Filter out empty strings
+                        filtered = [item for item in parsed if item]
+                        if not all(isinstance(item, str) for item in filtered):
+                            raise ValueError("All items in restraint_string_array must be strings")
+                        return filtered
+                except json.JSONDecodeError:
+                    pass
+                # If not JSON, treat as single string (backward compatibility)
+                return [value]
+            # Convert single value to list, but return empty list for None/empty values
+            if value is None:
+                return []
+            str_value = str(value).strip()
+            return [] if not str_value else [str_value]
         
         return value
     
@@ -138,6 +168,16 @@ class AmberParameter(BaseModel):
         # Special AMBER formatting
         if self.param_type == ParameterType.BOOLEAN:
             return 1 if converted_value else 0
+        elif self.param_type == ParameterType.RESTRAINT_STRING_ARRAY:
+            # Format array of restraint strings as comma-separated string for AMBER
+            # AMBER restraintmask accepts multiple masks separated by commas
+            if isinstance(converted_value, list):
+                if len(converted_value) == 0:
+                    return ""
+                # Join with commas - AMBER expects comma-separated restraint masks
+                return ",".join(converted_value)
+            # Fallback: convert to string if somehow not a list
+            return str(converted_value)
         
         return converted_value
     

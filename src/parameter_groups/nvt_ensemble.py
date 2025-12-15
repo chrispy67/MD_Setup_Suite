@@ -100,15 +100,15 @@ def create_nvt_parameter_group() -> ParameterGroup:
         11=Stochastic Berendsen (Bussi)"""
     ))
     
-    group.add_parameter(AmberParameter(
-        yaml_key="temperature",
-        amber_flag="temp0",
-        description="Target temperature for NVT ensemble: {value} (K)",
-        param_type=ParameterType.FLOAT,
-        category=ParameterCategory.GENERAL,  # heating_window[-1] == prod target temperature!
-        validation=ParameterValidation(min_value=0.0, max_value=1000.0),
-        default_value=300.0
-    ))
+    # group.add_parameter(AmberParameter(
+    #     yaml_key="temperature",
+    #     amber_flag="temp0",
+    #     description="Target temperature for NVT ensemble: {value} (K)",
+    #     param_type=ParameterType.FLOAT,
+    #     category=ParameterCategory.GENERAL,  # heating_window[-1] == prod target temperature!
+    #     validation=ParameterValidation(min_value=0.0, max_value=1000.0),
+    #     default_value=300.0
+    # ))
 
     group.add_parameter(AmberParameter(
         yaml_key="steps",
@@ -136,6 +136,16 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.FLOAT,
         category=ParameterCategory.RESTRAINT,
         default_value=10.0,
+    ))
+
+    group.add_parameter(AmberParameter(
+        yaml_key="restraint_string",
+        amber_flag="restraintmask",
+        description="Atom selection rules for restraints: {value}",
+        param_type=ParameterType.RESTRAINT_STRING_ARRAY,
+        category=ParameterCategory.RESTRAINT,
+        default_value=[],
+        notes="Array of AMBER atom selection strings (e.g., [':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'])"
     ))
 
     group.add_parameter(AmberParameter(

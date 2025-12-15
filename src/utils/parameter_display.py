@@ -45,6 +45,16 @@ def format_parameter_value(param: AmberParameter, value: Any) -> str:
             # For larger floats, show 2 decimal places
             else:
                 return f"{value:.2f}"
+    elif param.param_type == ParameterType.RESTRAINT_STRING_ARRAY:
+        # Format array of restraint strings for display
+        if isinstance(value, list):
+            if len(value) == 0:
+                return "(empty)"
+            if len(value) == 1:
+                return value[0]
+            # For multiple items, show as a formatted list
+            return f"[{', '.join(value)}]"
+        return str(value)
     return str(value)
 
 

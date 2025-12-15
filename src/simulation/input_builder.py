@@ -167,6 +167,7 @@ class BuildInputFiles:
 
             # Parse JSON file for necessary info
             heat_windows = self.cfg.simulations.NVT_ensemble.ramps
+            restraint_strings = self.cfg.simulations.NVT_ensemble.restraint_string
             temp_i = self.cfg.simulations.NVT_ensemble.initial_temperature
             temp_f = self.cfg.simulations.NVT_ensemble.final_temperature
             
@@ -221,6 +222,16 @@ class BuildInputFiles:
             nvt_config = self.cfg.simulations.NVT_ensemble
             
             # Create input files for each temperature window in each simulation window
+            # Ensure restraint_string is a list of same length as temp_windows. If not, handle gracefully.
+            restraint_strings = getattr(nvt_config, "restraint_string", [])
+            if not isinstance(restraint_strings, (list, tuple)):
+                restraint_strings = [restraint_strings]
+            if len(restraint_strings) != len(temp_windows):
+                print(
+                    f"⚠️  restraint_string count ({len(restraint_strings)}) does not match temp_windows count ({len(temp_windows)})."
+                    " The last restraint will be used for all remaining windows."
+                )
+            
             for window_idx in range(0, num_windows):
                 window_folder = os.path.join(
                     base_sim_dir, f"{system_name}_window_{window_idx}", "NVT"
@@ -229,23 +240,35 @@ class BuildInputFiles:
                 for heat_idx, (temp_prev, temp_next) in enumerate(temp_windows):
                     heat_dir = os.path.join(window_folder, f"heat{heat_idx}")
                     
+                    # Select the appropriate restraint_string for this window, falling back to last available if not enough values
+                    if len(restraint_strings) > 0:
+                        restraint_for_window = (
+                            restraint_strings[heat_idx]
+                            if heat_idx < len(restraint_strings)
+                            else restraint_strings[-1]
+                        )
+                    else:
+                        restraint_for_window = ""
+                    
+                    # Prepare a special_values dict; add restraint_string for this heat window
+                    special_values = {
+                        "initial_temperature": temp_prev,
+                        "final_temperature": temp_next,
+                        "restraint_string": restraint_for_window,
+                    }
+                    
                     # Create a copy of the template for this specific heat window
                     current_template = template_content
 
-                    # Special values for temperature windows
-                    special_values = {
-                        "initial_temperature": temp_prev,
-                        "final_temperature": temp_next
-                    }
-                    
-                    # Replace placeholders using registry-based method
+                    # Replace placeholders using registry-based method and special_values per window
                     current_template = self._replace_template_placeholders(
                         current_template, mapping, nvt_config, nvt_group, special_values
                     )
                     
-                    # Also replace the temperature placeholders directly (for backward compatibility)
+                    # Also replace the temperature and restraint_string placeholders directly (for backward compatibility)
                     current_template = current_template.replace("{initial_temperature}", str(temp_prev))
                     current_template = current_template.replace("{final_temperature}", str(temp_next))
+                    current_template = current_template.replace("{restraint_string}", str(restraint_for_window))
                     
                     # Write the populated content to the specific heat directory
                     output_path = os.path.join(heat_dir, "heat.in")

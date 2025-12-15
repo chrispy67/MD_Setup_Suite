@@ -113,6 +113,16 @@ def create_npt_parameter_group() -> ParameterGroup:
     ))
 
     group.add_parameter(AmberParameter(
+        yaml_key="restraint_string",
+        amber_flag="restraintmask",
+        description="Atom selection rules for restraints: {value}",
+        param_type=ParameterType.RESTRAINT_STRING_ARRAY,
+        category=ParameterCategory.RESTRAINT,
+        default_value=[],
+        notes="Array of AMBER atom selection strings (e.g., [':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'])"
+    ))
+
+    group.add_parameter(AmberParameter(
         yaml_key="read_prev_coordinates",
         amber_flag="ntx",
         description="Read in previous coordinates from input file: {value}",

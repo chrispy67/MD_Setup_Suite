@@ -90,6 +90,25 @@ def create_em_parameter_group() -> ParameterGroup:
     ))
 
     group.add_parameter(AmberParameter(
+        yaml_key="restraint_string",
+        amber_flag="restraintmask",
+        description="Atom selection rules for restraints: {value}",
+        param_type=ParameterType.RESTRAINT_STRING_ARRAY,
+        category=ParameterCategory.RESTRAINT,
+        default_value=[],
+        notes="Array of AMBER atom selection strings (e.g., [':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'])"
+    ))
+
+    group.add_parameter(AmberParameter(
+        yaml_key="timestep",
+        amber_flag="dt",
+        description="Timestep for energy minimization: {value} (ps)",
+        param_type=ParameterType.FLOAT,
+        category=ParameterCategory.GENERAL,
+        default_value=0.004
+    ))
+
+    group.add_parameter(AmberParameter(
         yaml_key="output_frequency",
         amber_flag="ntpr",
         description="Data will be written to AMBER files every {value} steps",
