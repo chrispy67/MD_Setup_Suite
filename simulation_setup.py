@@ -289,8 +289,8 @@ def main(cfg):
 
 
     # print("\nGenerating input files...")
-    # input_files.build_em(registry)
-    # input_files.build_nvt_equil()
+    input_files.build_em(registry)
+    input_files.build_nvt_equil(registry)
 
 
 
