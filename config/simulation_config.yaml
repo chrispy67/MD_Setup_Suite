@@ -15,7 +15,7 @@ global:
   # System information and commonly adjusted system parameters. 
   force_field: "amber"
   water_model: "tip3p"
-  hmass_repart: false
+  hmass_repart: False 
   
   # Some of these parameters need to have consistency?
   target_temperature: 300.0
@@ -24,7 +24,7 @@ global:
   langevin_damping: 1.0
 
   # Umbrella sampling parameters and input files
-  windows: 10
+  windows: 2
   input_files_dir: "./config" # 
   
   # Computational resources (for submission scripts and interactive jobs on HPC?)
@@ -46,7 +46,7 @@ simulations:
   em:
     subdirectory: "./simulations/em"
     name: "energy_minimization"
-    method: "steepest_descent"
+    min_method: 1
     restart: False
     steps: 100000
     timestep: 0.004
@@ -56,29 +56,48 @@ simulations:
     
     restraint: True
     max_force: 10 #kcal/mol liable to change
-    restraint_string: "a_Bb_CCC" # String that is liable to change
-    
+    restraint_string: 
+    - "a_Bb_CCC" # String that is liable to change
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+
   NVT_ensemble: #NVT
     subdirectory: "./simulations/equil/NVT" #This is the subdirectory that will be created within each simulation window
     name: "NVT_Equilibration"
-    thermostat: 2 # Multiple options here that map to different positional args
+    MD_method: 0
     Force_calculation: 2
+    PBC_treatment: 1 # NVT ensemble
 
+    # TEMPERATURE CONTROL
     ramped_heating: True # We can use the status of this flag to build subdirectories and file inputs
     ramps: 5 # Childers usually does multiple rounds of heating
     initial_temperature: 0.0
     final_temperature: 300.0
 
+    thermostat: 1 # Multiple options here that map to different positional args
+    Collision_frequency: 0.0
+    heat_bath_coupling_constant: 0.0
+
+    # simulation control
     steps: 100000 # steps per ramp
-    # timestep: 0.004 #ps
+    timestep: 0.004 #ps
     hmass_repart: false
     nonbonded_cut: 10.0 
     output_frequency: 1000
+    read_prev_coordinates: 1
+    restart_sim: 1
 
+    # RESTRAINTS 
     restraint: True
     restraint_weight: 25 
-    restraint_string: "a_Bb_CCC" # String that is liable to change
-    
+    max_force: 10 #kcal/mol 
+    SHAKE_param: 2
+
+    restraint_string: 
+    - "a_Bb_CCC" # String that is liable to change
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+
   NPT_ensemble:
     subdirectory: "./simulations/equil/NPT" # This is the subdirectory that will be created within each simulation window
     name: "NPT_Equilibration"
@@ -97,7 +116,7 @@ simulations:
     steps: 1000000
     timestep: 0.004
     hmass_repart: false
-    nonbonded_cut: 9.0
+    nonbonded_cut: 10.0
     output_frequency: 1000
 
     restraint: True
@@ -108,7 +127,7 @@ simulations:
   production: #NVT production is common
     subdirectory: "./simulations/prod"
     name: "production"
-    thermostat: "Bussi"
+    thermostat: 2
 
     steps: 5000000
     timestep: 0.004

@@ -1,8 +1,8 @@
 Minimization Stage 1 - Hydrogen Minimization 
 
  &cntrl 
-  imin=1,                     ! Perform energy minimization 
-  ntmin={method},             ! USER SELECTS MINIMIZATION TECHNIQUE
+  imin={MD_method},           ! Perform energy minimization (this should be STANDARD)
+  ntmin={min_method},         ! USER SELECTS MINIMIZATION TECHNIQUE
   maxcyc={steps},             ! USER SELECTS MAX # OF STEPS
   ncyc=250,                   !  500 Rounds of Steepest Descent
   ntx={restart},              ! Read Coordinates only 
