@@ -37,10 +37,10 @@ def create_em_parameter_group() -> ParameterGroup:
         category=ParameterCategory.CONTROL,
         validation=ParameterValidation(valid_values=[0, 1, 5, 6, 7]),
         default_value=1, # for minimization this is true
-        notes="""0=Molecular Dynamics, 
-        1=Energy Minimization, 
-        5=Read in trajectory for analysis using minimization algorithms, 
-        6=Read in trajectory for molecular dynamics driver, 
+        notes="""0=Molecular Dynamics 
+        1=Energy Minimization 
+        5=Read in trajectory for analysis using minimization algorithms 
+        6=Read in trajectory for molecular dynamics driver 
         7=????"""
     ))
 
@@ -96,7 +96,7 @@ def create_em_parameter_group() -> ParameterGroup:
         param_type=ParameterType.RESTRAINT_STRING_ARRAY,
         category=ParameterCategory.RESTRAINT,
         default_value=[],
-        notes="Array of AMBER atom selection strings (e.g., [':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'])"
+        notes="Array of AMBER atom selection strings"
     ))
 
     group.add_parameter(AmberParameter(

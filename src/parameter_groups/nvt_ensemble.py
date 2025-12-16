@@ -21,10 +21,10 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.CONTROL,
         validation=ParameterValidation(valid_values=[0, 1, 5, 6, 7]),
-        notes="""0=Molecular Dynamics, 
-        1=Energy Minimization, 
-        5=Read in trajectory for analysis using minimization algorithms, 
-        6=Read in trajectory for molecular dynamics driver, 
+        notes="""0=Molecular Dynamics 
+        1=Energy Minimization 
+        5=Read in trajectory for analysis using minimization algorithms 
+        6=Read in trajectory for molecular dynamics driver 
         7=????"""    
         ))
 
@@ -34,7 +34,9 @@ def create_nvt_parameter_group() -> ParameterGroup:
         description="Periodic boundary condition is set to {value}",
         param_type=ParameterType.INT,
         category=ParameterCategory.GENERAL,
-        notes="0=No periodicity, 1=Constant Volume, 2=Constant Pressure",
+        notes="""0=No periodicity 
+        1=Constant Volume 
+        2=Constant Pressure""",
         default_value=1 # intrinsic to this ensemble
     ))
 
@@ -70,7 +72,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.CONTROL,  # Generally turned off during production?
         default_value=2,  # Is this default for heating sims??
-        notes="""1=No SHAKE constraints, 
+        notes="""1=No SHAKE constraints 
         2=Hydrogen bonds constrained 
         3=All bonds constrainted"""
     ))
@@ -91,12 +93,12 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.THERMOSTAT,
         validation=ParameterValidation(valid_values=[0, 1, 2, 3]),
-        notes="""0=Constant energy classical dynamics, 
-        1=Constant temperature (weak coupling), 
-        2=Andersen, 
-        3=Langevian, 
-        9=Optimized Isokinetic Nose-Hoover chain ensemble (OIN), 
-        10=Stochastic Isokinetic Nose-Hoover RESPA integrator, 
+        notes="""0=Constant energy classical dynamics 
+        1=Constant temperature (weak coupling) 
+        2=Andersen 
+        3=Langevian 
+        9=Optimized Isokinetic Nose-Hoover chain ensemble (OIN) 
+        10=Stochastic Isokinetic Nose-Hoover RESPA integrator 
         11=Stochastic Berendsen (Bussi)"""
     ))
     
@@ -145,7 +147,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.RESTRAINT_STRING_ARRAY,
         category=ParameterCategory.RESTRAINT,
         default_value=[],
-        notes="Array of AMBER atom selection strings (e.g., [':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'])"
+        notes="Array of AMBER atom selection strings"
     ))
 
     group.add_parameter(AmberParameter(
@@ -175,7 +177,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.CONTROL,
         default_value=1,
-        notes="""1=Read coordinates only, 
+        notes="""1=Read coordinates only 
         5=Read coordinates AND velocities"""
     ))
 
@@ -186,7 +188,7 @@ def create_nvt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.CONTROL,
         default_value=0,
-        notes="""0=Do not Restart simulation, 
+        notes="""0=Do not Restart simulation 
         1=read coordinates AND velocities to continue simulation (NTX=5)"""
     ))
 

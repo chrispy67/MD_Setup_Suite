@@ -141,6 +141,44 @@ def format_parameter_description(param: AmberParameter, value: Any) -> tuple[str
     return description, True
 
 
+def extract_matching_note(notes: str, value: Any) -> Optional[str]:
+    """Extract the note line that matches the given value.
+    
+    Parses notes formatted as "value=description" entries separated by commas or newlines.
+    Returns only the matching entry for the given value.
+    
+    Args:
+        notes: The full notes string with multiple options
+        value: The parameter value to match
+        
+    Returns:
+        The matching note entry, or None if no match found
+    """
+
+    # https://ambermd.org/doc12/Amber24.pdf
+    # Each parameter defined within a ParameterGroup has a notes attribute that is a string of notes.
+    # If you add a parameter or create a new ParameterGroup, you can add notes that directly translate to AMBER documentation.  
+
+    if value is None:
+        return None
+    
+    # Convert value to string for matching
+    value_str = str(int(value) if isinstance(value, (int, float)) and float(value).is_integer() else value)
+    
+    # Split notes by comma or newline, handling both formats
+    entries = re.split(r'\n\s*', notes.strip())
+    
+    for entry in entries:
+        entry = entry.strip()
+        if not entry:
+            continue
+        # Check if entry starts with "value=" pattern
+        if entry.startswith(f"{value_str}="):
+            return entry
+    
+    return None
+
+
 def format_parameter_line(param: AmberParameter, value: Any, indent: str = "   ") -> str:
     """Format a single parameter as a bullet point line.
     
@@ -162,9 +200,14 @@ def format_parameter_line(param: AmberParameter, value: Any, indent: str = "   "
         formatted_value = format_parameter_value(param, value)
         line = f"{indent}• {formatted_description}: {formatted_value}"
     
-    # Add notes if available
+    # Add notes if available - extract only the matching option
     if param.notes:
-        line += f"\n{indent}    └─ {param.notes}"
+        matching_note = extract_matching_note(param.notes, value)
+        if matching_note:
+            line += f"\n{indent}    └─ {matching_note}"
+        else:
+            # Fallback to full notes if no match found (e.g., non-choice notes)
+            line += f"\n{indent}    └─ {param.notes}"
     
     return line
 
