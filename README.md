@@ -85,17 +85,21 @@ class AmberParameter(BaseModel):
 
 You can add custom parameters and mappings to ensembles, create your own simulation ensembles, and create your own validation rules with the `add_parameter()` function. 
 
-For example, here you can control and validate the timestep used for NVT ensembles for a whole host of simulations. 
+For example,here you can control the barostat that is used for you NPT equilibration run(s). Notice a default value is set to define this ensemble. Furthermore, the organization of the `notes` field in this example allows the program to display and summarize the selected `AmberParameter`. This is important for `parameter_display.py`
 
 ```python
     group.add_parameter(AmberParameter(
-        yaml_key="steps",
-        amber_flag="nstlim",
-        description="Simulation steps for NVT ensemble: {value}", # runtime value
+        yaml_key="pressure_control",
+        amber_flag="ntp",
+        description="Pressure control method (NOT THE BARSOSTAT): {value}",
         param_type=ParameterType.INT,
-        category=ParameterCategory.CONTROL,
-        validation=ParameterValidation(min_value=0),
-        default_value=100
+        category=ParameterCategory.BAROSTAT,
+        validation=ParameterValidation(valid_values=[0, 1, 2, 3, 4])default_value=1, # Isotropic is the default for NPT ensemble
+        notes="""0=No pressure control, 
+        1=Isotropic 
+        2=Anisotropic 
+        3=Semi-isotropic
+        4=MD to target volume (REMD)"""
     ))
 ```
 
@@ -111,7 +115,9 @@ For example, you need to provide (or at least consider) the collision frequency 
         error_message="THERMOSTAT dependency: 'Collision_frequency' (gamma_ln) must be > 0 when using Langevin thermostat (thermostat=3)"
     ))
 ```
-*Tip: The system automatically detects and registers new parameter groups as long as you follow the convention. There are plenty of examples and various use cases found in `src/parameter_groups/`*.
+
+> [!TIP] 
+> The system automatically detects and registers new parameter groups as long as you follow the convention shown above. There are plenty of examples and various use cases found in `src/parameter_groups/`*.
 
 The main goal of this project is to make MD simulations more accessible, reproducible, and less prone to errors when dealing with complex directory hirearchies. Most MD engines are completely complacent letting you do bad science such as:
 - Setting a temperature outside physical plausibility (e.g., 10,000 K or -100 K)
@@ -143,7 +149,7 @@ this can be avoided with `add_cross_group_depdendency()`. There are limited exam
             )
 ```
 
-
+## Summarizing Simulation 
 
 # Examples
 
@@ -152,13 +158,10 @@ Here I want to have a variety of YAML files that can create ready-to-go simulati
 
 ## Contributing
 
-This project started as a collaboration started with [UW CTMR](https://ctmr.washington.edu/) to support their MD simulations with AMBER. As of writing, this program only supports the AMBER engine, particularly 
+This project started as a collaboration started with [UW CTMR](https://ctmr.washington.edu/) to support their MD simulations with AMBER. As of writing, this program only supports the AMBER engine. However, the format of this project is meant to accomodate other engines. For example, I would like to suppport GROMACS parameters with a `GromacsParameter()` class. 
 
 ---
 
 **Ready to build upon! To add or subtract from the simulation parameterization, edit or add Python files in [`src/parameter_groups/`](src/parameter_groups/).**
 
-For questions, see the [issues](https://github.com/yourusername/md-sim-framework/issues) page or contact a maintainer.
-
----
 
