@@ -33,18 +33,19 @@ logger = logging.getLogger(__name__)
 )
 def main(cfg):
 
+    # # Example usage - build directories for a system
+    system_name = "1pdb" 
+    optional_string = ""  # Leave empty string if you don't want the optional part in the directory names
+
     # Create simulation setup instance by building recurisve directories and distributing input cards
     setup = SimulationSetup(cfg)
 
     # Initialize input files instance to build input files according to registry parameters, dependencies, and cross dependencies 
-    input_files = BuildInputFiles(cfg)
+    input_files = BuildInputFiles(cfg, system_name=system_name)
 
     # # HOW THE SCRIPT SHOULD BE RUN TO CREATE NEW DIRECTORY STRUCTURE
-    base_path = Path(cfg.directories.base_path)
+    # base_path = Path(cfg.directories.base_path)
     
-    # # Example usage - build directories for a system
-    system_name = "1pdb" 
-    optional_string = ""  # Leave empty string if you don't want the optional part in the directory names
 
     # # Build directories for ALL windows (umbrella sampling)
     print(f"Creating directories for {cfg['global']['windows']} windows...")
@@ -291,6 +292,7 @@ def main(cfg):
     # print("\nGenerating input files...")
     input_files.build_em(registry)
     input_files.build_nvt_equil(registry)
+    input_files.build_npt_equil(registry)
 
 
 

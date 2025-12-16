@@ -47,6 +47,7 @@ simulations:
     subdirectory: "./simulations/em"
     name: "energy_minimization"
     min_method: 1
+    MD_method: 0
     restart: False
     steps: 100000
     timestep: 0.004
@@ -69,14 +70,20 @@ simulations:
     PBC_treatment: 1 # NVT ensemble
 
     # TEMPERATURE CONTROL
-    ramped_heating: True # We can use the status of this flag to build subdirectories and file inputs
-    ramps: 5 # Childers usually does multiple rounds of heating
-    initial_temperature: 0.0
-    final_temperature: 300.0
+    # ramped_heating: True # We can use the status of this flag to build subdirectories and file inputs
+    # ramps: 5
+    # initial_temperature: 0.0
+    # final_temperature: 300.0
+
+    ramped_heating: False
+    ramps: 1 # Childers usually does multiple rounds of heating
+    temperature: 300.0
+    # initial_temperature: 0.0
+    # final_temperature: 300.0
 
     thermostat: 1 # Multiple options here that map to different positional args
     Collision_frequency: 0.0
-    heat_bath_coupling_constant: 0.0
+    heat_bath_coupling_constant: 1
 
     # simulation control
     steps: 100000 # steps per ramp
@@ -95,9 +102,11 @@ simulations:
 
     restraint_string: 
     - "a_Bb_CCC" # String that is liable to change
-    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
-    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
-
+    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
   NPT_ensemble:
     subdirectory: "./simulations/equil/NPT" # This is the subdirectory that will be created within each simulation window
     name: "NPT_Equilibration"
@@ -105,13 +114,18 @@ simulations:
     pressure_control: 0 # 0=No pressure control, 1=Isotropic, 2=Anisotropic, 3=Semi-isotropic, 4=MD to target volume (REMD)
     barostat: 0
 
+    MD_method: 0
+    Force_calculation: 2
+    PBC_treatment: 1 # NPT ensemble
+
     target_pressure: 1.0 # IN BAR
     pressure_scaling_factor: 1.0
     Anisotropy_Direction: 0
 
-    restart: False
+    restart_sim: False
+    read_prev_coordinates: 0
     temperature: 310.0
-    SHAKE: True
+    SHAKE_param: True
 
     steps: 1000000
     timestep: 0.004
@@ -120,7 +134,7 @@ simulations:
     output_frequency: 1000
 
     restraint: True
-    restraint_weight: 25 
+    max_force: 25 
     restraint_string: "a_Bb_CCC" # String that is liable to change
 
     
