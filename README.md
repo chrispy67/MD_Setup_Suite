@@ -51,10 +51,11 @@ MD_Setup_Suite/
 │   │   ├── group.py
 │   │   ├── dependency.py
 │   │   └── ...
-│   ├── enums/                 # Enumerations for types and choices
-│   │   └── ...
+│   ├── enums.py                 # Enumerations for types and choices
 │   ├── utils/                 # Utility functions for parsing, display, validation
-│   │   └── parameter_display.py
+│   │   ├──parameter_display.py
+│   │   ├──simulation_mappings.py # User flexibility for YAML key and simulation order
+│   │   ├──registry_helpers.py    # Helper functions 
 │   └── parameter_groups/      # Parameter groups that define/are necessary for common MD ensembles  
 │       ├── energy_minimization.py
 │       ├── nvt_ensemble.py
