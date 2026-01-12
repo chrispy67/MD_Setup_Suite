@@ -9,14 +9,17 @@ from omegaconf import DictConfig, OmegaConf
 
 from src.simulation import SimulationSetup, BuildInputFiles
 from src.models import ParameterRegistry
-from src.parameter_groups import (
-    create_em_parameter_group,
-    create_nvt_parameter_group,
-    create_workflow_parameter_group,
-    create_npt_parameter_group,
-    create_production_parameter_group
+from src.parameter_groups import create_workflow_parameter_group
+from src.utils.parameter_display import (
+    display_parameter_summary,
+    display_simulation_order_summary
 )
-from src.utils.parameter_display import display_parameter_summary
+from src.utils.simulation_mappings import (
+    SIMULATION_GROUP_MAPPING,
+    get_primary_group_name,
+    get_simulation_order
+)
+from src.utils.registry_helpers import register_simulation_groups
 
 # Set up logging
 import logging
@@ -24,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 # Legacy class definitions removed - now imported from src.simulation
 # SimulationSetup and BuildInputFiles are now in src/simulation/setup.py and src/simulation/input_builder.py
+
+#TODO: Handle 'global' parameter as workflow; the Python reserved word is making this difficult
+#TODO: Better error handling with restraint: True/False and string values.
+#TODO: Think about different ensembles and extensibility for different simulations and ensembles
 
 
 @hydra.main(
@@ -42,9 +49,6 @@ def main(cfg):
 
     # Initialize input files instance to build input files according to registry parameters, dependencies, and cross dependencies 
     input_files = BuildInputFiles(cfg, system_name=system_name)
-
-    # # HOW THE SCRIPT SHOULD BE RUN TO CREATE NEW DIRECTORY STRUCTURE
-    # base_path = Path(cfg.directories.base_path)
     
 
     # # Build directories for ALL windows (umbrella sampling)
@@ -69,13 +73,25 @@ def main(cfg):
     # # Build registry and validate configuration
     registry = ParameterRegistry()
     
-    registry.add_group(create_workflow_parameter_group())
-    registry.add_group(create_em_parameter_group())
-    registry.add_group(create_nvt_parameter_group())
-    registry.add_group(create_npt_parameter_group())
-    registry.add_group(create_production_parameter_group())
-
-
+    registry.add_group(create_workflow_parameter_group()) # this is standard
+    
+    # Get simulation order from YAML configuration
+    try:
+        simulation_order, yaml_to_canonical = get_simulation_order(cfg)
+    except ValueError as e:
+        print(f"\n❌ Configuration Error:")
+        print(f"  {str(e)}")
+        return
+    
+    # Display simulation order summary
+    global_config = OmegaConf.to_container(cfg["global"], resolve=True) if "global" in cfg else {}
+    windows = global_config.get("windows", 1)
+    display_simulation_order_summary(simulation_order, cfg, windows, yaml_to_canonical)
+    
+    # Dynamically register simulation parameter groups based on YAML
+    registered_groups = register_simulation_groups(registry, simulation_order)
+    
+    # Validate workflow parameters
     workflow_group = registry.get_group("workflow")
     workflow_config = OmegaConf.to_container(cfg["global"], resolve=True)
     
@@ -96,125 +112,113 @@ def main(cfg):
         title="Workflow Parameters"
     )
 
-    # Validate EM parameters
-    em_group = registry.get_group("energy_minimization")
-    em_config = OmegaConf.to_container(cfg.simulations.em, resolve=True)
-    is_valid, errors = em_group.validate_config(em_config)
+    # Dynamically validate and display parameters for each simulation type
+    group_configs = {"workflow": workflow_config}
     
-    if not is_valid:
-        print("❌ EM configuration errors:")
-        for error in errors:
-            print(f"  - {error}")
-        # return
-    else:
-        print("✅ EM configuration valid")
-    
-    # Display EM parameter summary
-    display_parameter_summary(
-        group=em_group, # registry group with associated metadata, defaults, and validation
-        config=em_config, #config dictionary with stored, RUNTIME values passed by user
-        show_only_set=True,
-        group_by_category=True,
-        title="Energy Minimization Parameters"
-    )
+    for canonical_key in simulation_order:
+        if canonical_key not in SIMULATION_GROUP_MAPPING:
+            # This should not happen if get_simulation_order() is called first,
+            # but handle it gracefully
+            logger.warning(f"Unknown simulation type: {canonical_key}, skipping...")
+            continue
+        
+        mapping = SIMULATION_GROUP_MAPPING[canonical_key]
+        group_name_list = mapping["group_name"]
+        display_name = mapping["display_name"]
+        
+        # Get primary group name (first in list, or the string itself)
+        primary_group_name = get_primary_group_name(group_name_list)
+        
+        # Find the original YAML key to access the config
+        original_yaml_key = None
+        for yaml_key, canon in yaml_to_canonical.items():
+            if canon == canonical_key:
+                original_yaml_key = yaml_key
+                break
+        
+        # Get the group and config (use original YAML key if found, otherwise canonical key)
+        sim_group = registry.get_group(primary_group_name)
+        if original_yaml_key and original_yaml_key in cfg.simulations:
+            sim_config = OmegaConf.to_container(cfg.simulations[original_yaml_key], resolve=True)
+        elif canonical_key in cfg.simulations:
+            sim_config = OmegaConf.to_container(cfg.simulations[canonical_key], resolve=True)
+        else:
+            logger.warning(f"Could not find config for {canonical_key}, skipping...")
+            continue
+        
+        group_configs[primary_group_name] = sim_config
+        
+        # Validate
+        is_valid, errors = sim_group.validate_config(sim_config)
+        
+        if not is_valid:
+            print(f"❌ {display_name} configuration errors:")
+            for error in errors:
+                print(f"  - {error}")
+            # return
+        else:
+            print(f"✅ {display_name} configuration valid")
+        
+        # Display parameter summary
+        title = f"{display_name} Parameters"
+        if display_name == "EM":
+            title = "Energy Minimization Parameters"
+        elif display_name == "NVT":
+            title = "NVT Ensemble Parameters"
+        elif display_name == "NPT":
+            title = "NPT Ensemble Parameters"
+        elif display_name == "Production":
+            title = "Production Ensemble Parameters"
+        
 
-# # Validate NVT parameters
-    nvt_group = registry.get_group("nvt_ensemble")    
-    nvt_config = OmegaConf.to_container(cfg.simulations.NVT_ensemble, resolve=True)
-    is_valid, errors = nvt_group.validate_config(nvt_config)
-
-    if not is_valid:
-        print("❌ NVT configuration errors:")
-        for error in errors:
-            print(f"  - {error}")
-        # return
-    else:
-        print("✅ NVT configuration valid")
-
-    # Display NVT parameter summary
-    display_parameter_summary(
-        group=nvt_group, # registry group with associated metadata, defaults, and validation
-        config=nvt_config, #config dictionary with stored, RUNTIME values passed by user
-        show_only_set=True,
-        group_by_category=True,
-        title="NVT Ensemble Parameters"
-    )
-
-
-    npt_group = registry.get_group("npt_ensemble")
-    npt_config = OmegaConf.to_container(cfg.simulations.NPT_ensemble, resolve=True)
-    is_valid, errors = npt_group.validate_config(npt_config)
-
-    if not is_valid:
-        print("❌ NPT configuration errors:")
-        for error in errors:
-            print(f"  - {error}")
-        # return
-    else:
-        print("✅ NPT configuration valid")
-
-    # Display NPT parameter summary
-    display_parameter_summary(
-        group=npt_group, # registry group with associated metadata, defaults, and validation
-        config=npt_config, #config dictionary with stored, RUNTIME values passed by user
-        show_only_set=True,
-        group_by_category=True,
-        title="NPT Ensemble Parameters"
-    )
-
-    production_group = registry.get_group("production_ensemble")
-    production_config = OmegaConf.to_container(cfg.simulations.production, resolve=True)
-    is_valid, errors = production_group.validate_config(production_config)
-
-    if not is_valid:
-        print("❌ Production configuration errors:")
-        for error in errors:
-            print(f"  - {error}")
-        # return
-    else:
-        print("✅ Production configuration valid")
+        ## SUMMARY DISPLAYED FOR EACH SIMULATION TYPE 
+        ## SIMULATION ORDER IS IMPLIED BY THE YAML CONFIGURATION AND REFLECTED HERE
+        display_parameter_summary(
+            group=sim_group,
+            config=sim_config,
+            show_only_set=True,
+            group_by_category=True,
+            title=title
+        )
 
 
-    # THIS ORDER WILL CHANGE IN THE FUTURE TO BE MORE FLEXIBLE
-    # for example, users could select em -> npt -> nvt -> production, em -> nvt -> production, etc. 
+    # Convert YAML keys to primary group names for cross-group dependency checking
+    # The order is now dynamically determined from the YAML configuration
     selected_simulation_ensemble = [
-        "energy_minimization",
-        "nvt_ensemble",
-        "npt_ensemble",
-        "production"
+        get_primary_group_name(SIMULATION_GROUP_MAPPING[yaml_key]["group_name"])
+        for yaml_key in simulation_order
+        if yaml_key in SIMULATION_GROUP_MAPPING
     ]
-
-    # Group configs is a dictionary of the configuration for each group, INCLUDING workflow 
-    group_configs = {
-        "workflow": workflow_config,  # Workflow is still a parameter group that is used to setup directories, fundamentals of simulation, etc. 
-        "energy_minimization": em_config,
-        "nvt_ensemble": nvt_config,
-        "npt_ensemble": npt_config,
-        "production": production_config,  # Uncomment or define accordingly if needed
-    }
+    
+    # group_configs is already built dynamically above during validation
+    # It includes workflow and all simulation groups in the order they appear in YAML
 
     # Simple example of a cross-group dependency for a method to be correct
     # auto_apply_defaults=True means: show warning and automatically apply required values
     # many of these can and will be caught by AMBER, but this is a better way to catch errors before you do a bunch of simulations
-    registry.add_cross_group_dependency(
-        condition_group="workflow", 
-        condition_param="water_model",
-        condition_value="tip3p", 
-        target_group="nvt_ensemble",
-        required_params={"Force_calculation": 2, "SHAKE_param": 2},
-        error_message="TIP3P Water Model requires NTF=NTC=2!",
-        auto_apply_defaults=True  # Auto-apply defaults and show warnings instead of errors
-    )
+    # Only add if nvt_ensemble is in the selected simulations
+    if "nvt_ensemble" in selected_simulation_ensemble:
+        registry.add_cross_group_dependency(
+            condition_group="workflow", 
+            condition_param="water_model",
+            condition_value="tip3p", 
+            target_group="nvt_ensemble",
+            required_params={"Force_calculation": 2, "SHAKE_param": 2},
+            error_message="TIP3P Water Model requires NTF=NTC=2!",
+            auto_apply_defaults=True  # Auto-apply defaults and show warnings instead of errors
+        )
 
     # While the timestep is checked for consistency throughout the ensemble, this would be the first opprotunity to check for hmass repartitioning
-    registry.add_cross_group_dependency(
-        condition_group="workflow",
-        condition_param="hmass_repart",
-        condition_value=True,
-        target_group="energy_minimization",
-        required_params={"timestep": 0.004},
-        error_message="Hydrogen mass repartitioning is primarily used with a 4 femtosecond timestep"
-    )
+    # Only add if energy_minimization is in the selected simulations
+    if "energy_minimization" in selected_simulation_ensemble:
+        registry.add_cross_group_dependency(
+            condition_group="workflow",
+            condition_param="hmass_repart",
+            condition_value=True,
+            target_group="energy_minimization",
+            required_params={"timestep": 0.004},
+            error_message="Hydrogen mass repartitioning is primarily used with a 4 femtosecond timestep"
+        )
 
     # To enforce that nvt_ensemble.cut matches energy_minimization.nonbonded_cut
     # (i.e., the 'cut' parameter in nvt_ensemble equals 'nonbonded_cut' in energy_minimization),

@@ -2,9 +2,11 @@
 
 import re
 from typing import Dict, Any, Optional, List
+from omegaconf import DictConfig
 from src.models.group import ParameterGroup
 from src.models.parameter import AmberParameter
 from src.enums import ParameterCategory, ParameterType
+from src.utils.simulation_mappings import SIMULATION_GROUP_MAPPING
 
 
 def format_parameter_value(param: AmberParameter, value: Any) -> str:
@@ -294,5 +296,93 @@ def display_parameter_summary(
                 else:
                     print(f"   • {param.description}: (not set)")
     
+    print("="*70)
+
+
+def calculate_simulation_count(
+    yaml_key: str, 
+    sim_config: DictConfig, 
+    windows: int,
+    global_config: Optional[DictConfig] = None
+) -> int:
+    """Calculate the number of simulations for a given simulation type.
+    
+    Count = windows * ramps (if ramped_heating is True) or windows * 1 (if False)
+    For simulations without ramps (em, production), count = windows
+    
+    Args:
+        yaml_key: The YAML key for the simulation type (e.g., "em", "NVT_ensemble")
+        sim_config: The configuration for this specific simulation
+        windows: Number of umbrella sampling windows
+        global_config: Optional global config for accessing global parameters
+        
+    Returns:
+        Total number of simulations of this type
+    """
+    # Check if this simulation type supports ramped heating
+    if hasattr(sim_config, 'ramped_heating') and sim_config.ramped_heating:
+        ramps = getattr(sim_config, 'ramps', 1)
+        return windows * ramps
+    else:
+        # For simulations without ramps, just return windows
+        return windows
+
+
+def display_simulation_order_summary(
+    simulation_order: List[str],
+    cfg: DictConfig,
+    windows: int,
+    yaml_to_canonical: Dict[str, str]
+) -> None:
+    """Display a summary of the simulation order with counts.
+    
+    Example output: "1x EM -> 1x NVT -> 1x NPT -> 2x Production"
+    
+    Args:
+        simulation_order: List of canonical simulation keys in order
+        cfg: The Hydra configuration object
+        windows: Number of umbrella sampling windows
+        yaml_to_canonical: Mapping from original YAML keys to canonical keys
+    """
+    if not simulation_order:
+        print("\n⚠️  No simulations configured")
+        return
+    
+    counts = []
+    display_names = []
+    
+    for canonical_key in simulation_order:
+        if canonical_key not in SIMULATION_GROUP_MAPPING:
+            continue
+        
+        # Find the original YAML key to access the config
+        original_yaml_key = None
+        for yaml_key, canon in yaml_to_canonical.items():
+            if canon == canonical_key:
+                original_yaml_key = yaml_key
+                break
+        
+        # Use original key if found, otherwise try canonical key
+        if original_yaml_key and original_yaml_key in cfg.simulations:
+            sim_config = cfg.simulations[original_yaml_key]
+        elif canonical_key in cfg.simulations:
+            sim_config = cfg.simulations[canonical_key]
+        else:
+            continue
+        
+        count = calculate_simulation_count(canonical_key, sim_config, windows, cfg.get("global"))
+        display_name = SIMULATION_GROUP_MAPPING[canonical_key]["display_name"]
+        
+        counts.append(count)
+        display_names.append(display_name)
+    
+    # Format the summary string
+    summary_parts = [f"{count}x {name}" for count, name in zip(counts, display_names)]
+    summary = " -> ".join(summary_parts)
+    
+    print("\n" + "="*70)
+    print("Simulation Order Summary")
+    print("="*70)
+    print(f"  {summary}")
     print("="*70)
 

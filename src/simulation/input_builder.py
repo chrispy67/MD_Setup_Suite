@@ -3,16 +3,20 @@
 import os
 from pathlib import Path
 from tempfile import gettempdir
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Tuple, Any, Dict
 from omegaconf import DictConfig, OmegaConf
 import logging
 
 from src.models.registry import ParameterRegistry
 from src.models.group import ParameterGroup
 from src.models.parameter import AmberParameter
+from src.utils.simulation_mappings import get_group_name_mapping
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Get the simplified group name mapping for flexible YAML key resolution
+SIMULATION_KEY_MAPPING = get_group_name_mapping()
 
 
 class BuildInputFiles:
@@ -33,6 +37,52 @@ class BuildInputFiles:
         # input_files_dir is relative to the project root (where simulation_setup.py is)
         project_root = Path(__file__).parent.parent.parent
         self.input_files_dir = project_root / cfg["global"]["input_files_dir"]
+    
+    def _find_canonical_key(self, yaml_key: str) -> Optional[str]:
+        """Find the canonical key by checking if yaml_key is in any group_name array.
+        
+        This matches the logic in simulation_setup.py to support flexible YAML keys.
+        
+        Args:
+            yaml_key: The YAML key from the configuration file
+            
+        Returns:
+            The canonical key if found, None otherwise
+        """
+        # First check if it's a direct match (canonical key itself)
+        if yaml_key in SIMULATION_KEY_MAPPING:
+            return yaml_key
+        
+        # Check if yaml_key is in any group_name array
+        for canonical_key, group_names in SIMULATION_KEY_MAPPING.items():
+            if yaml_key in group_names:
+                return canonical_key
+        
+        return None
+    
+    def _get_simulation_config(self, canonical_key: str) -> Optional[DictConfig]:
+        """Get simulation config by canonical key, handling flexible YAML key aliases.
+        
+        Args:
+            canonical_key: The canonical key (e.g., "em", "NVT_ensemble", "production")
+            
+        Returns:
+            The simulation configuration DictConfig, or None if not found
+        """
+        if not hasattr(self.cfg, 'simulations') or self.cfg.simulations is None:
+            return None
+        
+        # First try the canonical key directly
+        if canonical_key in self.cfg.simulations:
+            return self.cfg.simulations[canonical_key]
+        
+        # Look through all YAML keys to find one that maps to this canonical key
+        for yaml_key in self.cfg.simulations.keys():
+            found_canonical = self._find_canonical_key(yaml_key)
+            if found_canonical == canonical_key:
+                return self.cfg.simulations[yaml_key]
+        
+        return None
     
     def _get_parameter_mapping(self, group: ParameterGroup) -> List[Tuple[str, str]]:
         """
@@ -134,8 +184,11 @@ class BuildInputFiles:
         with open(template_path, 'r') as f:
             template_content = f.read()
         
-        # Get EM configuration from YAML
-        em_config = self.cfg.simulations.em
+        # Get EM configuration from YAML (handles flexible key names)
+        em_config = self._get_simulation_config("em")
+        if not em_config:
+            logger.error("Could not find EM simulation configuration in YAML")
+            return None
         
         # Replace placeholders using registry-based method
         template_content = self._replace_template_placeholders(
@@ -167,17 +220,23 @@ class BuildInputFiles:
         # Get parameter mapping from registry
         mapping = self._get_parameter_mapping(nvt_group)
         
-        ramped_heat = self.cfg.simulations.NVT_ensemble.ramped_heating
+        # Get NVT configuration from YAML (handles flexible key names)
+        nvt_config = self._get_simulation_config("NVT_ensemble")
+        if not nvt_config:
+            logger.error("Could not find NVT_ensemble simulation configuration in YAML")
+            return None
+        
+        ramped_heat = nvt_config.ramped_heating
 
         if ramped_heat:
 
             # Parse JSON file for necessary info
-            heat_windows = self.cfg.simulations.NVT_ensemble.ramps
-            restraint_strings = self.cfg.simulations.NVT_ensemble.restraint_string
-            temp_i = self.cfg.simulations.NVT_ensemble.initial_temperature
-            temp_f = self.cfg.simulations.NVT_ensemble.final_temperature
+            heat_windows = nvt_config.ramps
+            restraint_strings = nvt_config.restraint_string
+            temp_i = nvt_config.initial_temperature
+            temp_f = nvt_config.final_temperature
             
-            print(f"***NVT equilibration will be done in {heat_windows} steps***")
+            # print(f"***NVT equilibration will be done in {heat_windows} steps***")
 
             # Set arrays from stored values in JSON config
             temp_gradient = (float(temp_f) - float(temp_i)) / int(heat_windows)  # Deg (K) per window
@@ -208,7 +267,7 @@ class BuildInputFiles:
                     heat_dir = os.path.join(window_folder, f"heat{idx}")
                     try:
                         os.makedirs(heat_dir, exist_ok=False)  # FLOW CONTROL FOR OVERWRITING/CREATING NEW FOLDER HIREARCHIES STARTS HERE 
-                        print(f"Heating directory created!: {heat_dir}")
+                        # print(f"Heating directory created!: {heat_dir}")
                     except FileExistsError as e:
                         window_heat_dirs.append(heat_dir)
                         print(f"Failed to create directory, {heat_dir} already exists!")
@@ -225,7 +284,7 @@ class BuildInputFiles:
             with open(template_path, 'r') as f:
                 template_content = f.read()
             
-            nvt_config = self.cfg.simulations.NVT_ensemble
+            # nvt_config already retrieved above
             
             # Create input files for each temperature window in each simulation window
             # Ensure restraint_string is a list of same length as temp_windows. If not, handle gracefully.
@@ -283,7 +342,7 @@ class BuildInputFiles:
 
 
         else:
-            print("**NVT equilibration will be done in one step**")
+            # print("**NVT equilibration will be done in one step**")
             
             # Read the template file for single-step NVT
             template_path = self.input_files_dir / "heat_BLANK.in"
@@ -295,7 +354,7 @@ class BuildInputFiles:
             with open(template_path, 'r') as f:
                 template_content = f.read()
             
-            nvt_config = self.cfg.simulations.NVT_ensemble
+            # nvt_config already retrieved above
             
             # Create input files for each simulation window (single NVT step)
             base_sim_dir = "./simulations"
@@ -397,14 +456,18 @@ class BuildInputFiles:
         # Get parameter mapping from registry
         mapping = self._get_parameter_mapping(npt_group)
         
-        npt_config = self.cfg.simulations.NPT_ensemble
+        # Get NPT configuration from YAML (handles flexible key names)
+        npt_config = self._get_simulation_config("NPT_ensemble")
+        if not npt_config:
+            logger.error("Could not find NPT_ensemble simulation configuration in YAML")
+            return None
         ramps = getattr(npt_config, "ramps", 1)
         
         if ramps > 1:
             # Multiple equilibration ramps
             restraint_strings = getattr(npt_config, "restraint_string", [])
             
-            print(f"***NPT equilibration will be done in {ramps} steps***")
+            # print(f"***NPT equilibration will be done in {ramps} steps***")
             
             # Ensure restraint_string is a list
             if not isinstance(restraint_strings, (list, tuple)):
@@ -488,7 +551,7 @@ class BuildInputFiles:
                         f.write(current_template)
         
         else:
-            print("**NPT equilibration will be done in one step**")
+            # print("**NPT equilibration will be done in one step**")
             
             # Read the template file for single-step NPT
             template_path = self.input_files_dir / "equil_BLANK.in"
