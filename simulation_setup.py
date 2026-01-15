@@ -1,10 +1,9 @@
 """
-Hydra-based simulation setup script that creates properly labeled directories
-with formatted input files and global variables.
+Simulation setup script that creates properly labeled directories
+with formatted input files and workflow parameters.
 """
 
 from pathlib import Path
-import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from src.simulation import SimulationSetup, BuildInputFiles
@@ -28,17 +27,18 @@ logger = logging.getLogger(__name__)
 # Legacy class definitions removed - now imported from src.simulation
 # SimulationSetup and BuildInputFiles are now in src/simulation/setup.py and src/simulation/input_builder.py
 
-#TODO: Handle 'global' parameter as workflow; the Python reserved word is making this difficult
+#TODO: Handle ramped/ramped_heating for NPT ensemble and manage the 'workflow' values that are making this difficult
 #TODO: Better error handling with restraint: True/False and string values.
 #TODO: Think about different ensembles and extensibility for different simulations and ensembles
 
 
-@hydra.main(
-    version_base="1.2",
-    config_path="./config/",
-    config_name="simulation_config.yaml"
-)
-def main(cfg):
+def main():
+    # Load configuration using OmegaConf
+    config_path = Path("./config/simulation_config.yaml")
+    if not config_path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+    
+    cfg = OmegaConf.load(config_path)
 
     # # Example usage - build directories for a system
     system_name = "1pdb" 
@@ -52,7 +52,7 @@ def main(cfg):
     
 
     # # Build directories for ALL windows (umbrella sampling)
-    print(f"Creating directories for {cfg['global']['windows']} windows...")
+    print(f"Creating directories for {cfg['workflow']['windows']} windows...")
     created_dirs = setup.build_directories(
         system_name=system_name,
         window_num=None,  # None means create all windows
@@ -84,8 +84,8 @@ def main(cfg):
         return
     
     # Display simulation order summary
-    global_config = OmegaConf.to_container(cfg["global"], resolve=True) if "global" in cfg else {}
-    windows = global_config.get("windows", 1)
+    workflow_config = OmegaConf.to_container(cfg["workflow"], resolve=True) if "workflow" in cfg else {}
+    windows = workflow_config.get("windows", 1)
     display_simulation_order_summary(simulation_order, cfg, windows, yaml_to_canonical)
     
     # Dynamically register simulation parameter groups based on YAML
@@ -93,7 +93,6 @@ def main(cfg):
     
     # Validate workflow parameters
     workflow_group = registry.get_group("workflow")
-    workflow_config = OmegaConf.to_container(cfg["global"], resolve=True)
     
     is_valid, errors = workflow_group.validate_config(workflow_config)
     if not is_valid:
@@ -292,6 +291,12 @@ def main(cfg):
 
     # print(registry.get_parameter(yaml_key="thermostat", group_name="nvt_ensemble"))
 
+
+    # REGISTRY COMPLETE WITH CATEGORIES, VALIDATION RULES, DEFAULTS, DESCRIPTIONS, ETC. 
+    # print(registry.get_group("workflow"))
+
+    # PULLS VALUES DIRECTLY FROM YAML CONFIGURATION, NOT NECESSARILY DEFINED IN REGISTRY
+    # print(workflow_config)
 
     # print("\nGenerating input files...")
     input_files.build_em(registry)

@@ -1,33 +1,25 @@
-# This file defines global variables that are shared across all simulation types
+# This file defines workflow parameters and simulation-specific configurations
+# Workflow parameters control directory structure, system settings, and computational resources
+# These are fundamentally different from ensemble parameters which map directly to AMBER flags
 
-hydra:
-  run:
-    dir: .  # Use current directory instead of creating outputs/ subdirectories
-  
-  job:
-    chdir: false  # Don't change working directory
-
-defaults:
-  - _self_
-
-# Global variables - these are generally not changed when working within directories
-global:
-  # System information and commonly adjusted system parameters. 
+# Workflow parameters - control directory hierarchy, file building, and cross-group dependencies
+workflow:
+  # System settings - force field and water model (used for cross-group validation)
   force_field: "amber"
   water_model: "tip3p"
   hmass_repart: False 
   
-  # Some of these parameters need to have consistency?
-  target_temperature: 300.0
-  tartgetpressure: 1.0
-  nonbonded_cutoff: 10.0
-  langevin_damping: 1.0
+  # Simulation targets - reference values for consistency checking across ensembles
+  # target_temperature: 300.0
+  # target_pressure: 1.0  
+  # nonbonded_cutoff: 10.0
+  # langevin_damping: 1.0
 
-  # Umbrella sampling parameters and input files
+  # Umbrella sampling and workflow control
   windows: 2
-  input_files_dir: "./config" # 
+  input_files_dir: "./config"
   
-  # Computational resources (for submission scripts and interactive jobs on HPC?)
+  # Computational resources (for submission scripts and interactive jobs on HPC)
   user: "CTMR"
   node: "rtx_2080" 
   cpus_per_node: 16
@@ -43,7 +35,7 @@ directories:
 # Simulation-specific configurations
 simulations:
 
-  em:
+  energy_minimization:
     subdirectory: "./simulations/em"
     name: "energy_minimization"
     min_method: 1
@@ -59,8 +51,8 @@ simulations:
     max_force: 10 #kcal/mol liable to change
     restraint_string: 
     - "a_Bb_CCC" # String that is liable to change
-    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
-    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
 
   NVT_ensemble: #NVT
     subdirectory: "./simulations/equil/NVT" #This is the subdirectory that will be created within each simulation window
@@ -70,16 +62,16 @@ simulations:
     PBC_treatment: 1 # NVT ensemble
 
     # TEMPERATURE CONTROL
-    # ramped_heating: True # We can use the status of this flag to build subdirectories and file inputs
-    # ramps: 5
-    # initial_temperature: 0.0
-    # final_temperature: 300.0
+    ramped_heating: True # We can use the status of this flag to build subdirectories and file inputs
+    ramps: 3
+    initial_temperature: 0.0
+    final_temperature: 300.0
 
-    ramped_heating: False
-    ramps: 1 # Childers usually does multiple rounds of heating
-    temperature: 300.0
-    # initial_temperature: 0.0
-    # final_temperature: 300.0
+    # ramped_heating: False
+    # ramps: 1 # Childers usually does multiple rounds of heating
+    # temperature: 300.0
+    # # initial_temperature: 0.0
+    # # final_temperature: 300.0
 
     thermostat: 1 # Multiple options here that map to different positional args
     Collision_frequency: 0.0
@@ -101,12 +93,12 @@ simulations:
     SHAKE_param: 2
 
     restraint_string: 
-    - "a_Bb_CCC" # String that is liable to change
-    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
-    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
-    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
-    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
-    # - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    # - "a_Bb_CCC" # String that is liable to change
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
+    - ':1-NUMRES@CA,C,N,O,PA,PB,Mg,MG'
   NPT_ensemble:
     subdirectory: "./simulations/equil/NPT" # This is the subdirectory that will be created within each simulation window
     name: "NPT_Equilibration"
