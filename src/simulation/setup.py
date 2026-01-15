@@ -87,7 +87,7 @@ class SimulationSetup:
         dirs_to_create = []
         
         if window_num is None:
-            num_windows = self.cfg["global"]["windows"]
+            num_windows = self.cfg["workflow"]["windows"]
             for i in range(0, num_windows):
                 dir_path = self._get_window_directory_path(
                     system_name, i, optional, base_path, naming_pattern

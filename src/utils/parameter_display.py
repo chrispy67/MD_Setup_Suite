@@ -303,7 +303,7 @@ def calculate_simulation_count(
     yaml_key: str, 
     sim_config: DictConfig, 
     windows: int,
-    global_config: Optional[DictConfig] = None
+    workflow_config: Optional[DictConfig] = None
 ) -> int:
     """Calculate the number of simulations for a given simulation type.
     
@@ -314,7 +314,7 @@ def calculate_simulation_count(
         yaml_key: The YAML key for the simulation type (e.g., "em", "NVT_ensemble")
         sim_config: The configuration for this specific simulation
         windows: Number of umbrella sampling windows
-        global_config: Optional global config for accessing global parameters
+        workflow_config: Optional workflow config for accessing workflow parameters
         
     Returns:
         Total number of simulations of this type
@@ -340,7 +340,7 @@ def display_simulation_order_summary(
     
     Args:
         simulation_order: List of canonical simulation keys in order
-        cfg: The Hydra configuration object
+        cfg: The configuration object
         windows: Number of umbrella sampling windows
         yaml_to_canonical: Mapping from original YAML keys to canonical keys
     """
@@ -370,7 +370,7 @@ def display_simulation_order_summary(
         else:
             continue
         
-        count = calculate_simulation_count(canonical_key, sim_config, windows, cfg.get("global"))
+        count = calculate_simulation_count(canonical_key, sim_config, windows, cfg.get("workflow"))
         display_name = SIMULATION_GROUP_MAPPING[canonical_key]["display_name"]
         
         counts.append(count)

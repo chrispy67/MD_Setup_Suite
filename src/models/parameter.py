@@ -180,7 +180,4 @@ class AmberParameter(BaseModel):
             return str(converted_value)
         
         return converted_value
-    
-    def is_workflow_parameter(self) -> bool:
-        """Check if this is a workflow parameter (no amber_flag)."""
-        return self.amber_flag is None
+

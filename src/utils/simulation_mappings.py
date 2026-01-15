@@ -99,7 +99,7 @@ def get_simulation_order(cfg: DictConfig) -> Tuple[List[str], Dict[str, str]]:
         ValueError: If a YAML key in simulations doesn't match any known simulation type
     
     Args:
-        cfg: The Hydra configuration object
+        cfg: The configuration object
         
     Returns:
         Tuple of (list of canonical keys in order, mapping from original YAML keys to canonical keys)

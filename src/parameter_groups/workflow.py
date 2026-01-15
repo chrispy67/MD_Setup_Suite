@@ -14,25 +14,6 @@ def create_workflow_parameter_group() -> ParameterGroup:
     )
 
     # Global workflow parameters
-    # Heating control parameters
-    group.add_parameter(AmberParameter(
-        yaml_key="ramped_heating",
-        amber_flag=None,  # Workflow parameter
-        description="Enable ramped heating protocol?: {value}",
-        param_type=ParameterType.BOOLEAN,
-        category=ParameterCategory.WORKFLOW,
-        default_value=False
-    ))
-    
-    group.add_parameter(AmberParameter(
-        yaml_key="ramps",
-        amber_flag=None,  # Workflow parameter
-        description="Number of heating ramps: {value}",
-        param_type=ParameterType.INT,
-        category=ParameterCategory.WORKFLOW,
-        default_value=0
-    ))
-    
     group.add_parameter(AmberParameter(
         yaml_key="windows",
         amber_flag=None,  # Workflow parameter
@@ -52,7 +33,7 @@ def create_workflow_parameter_group() -> ParameterGroup:
         param_type=ParameterType.STRING,
         category=ParameterCategory.WORKFLOW,
         validation=ParameterValidation(valid_values=["amber", "charmm", "gromos"]),
-        default_value="amber"
+        default_value=None
     ))
     
     group.add_parameter(AmberParameter(

@@ -155,6 +155,7 @@ def create_npt_parameter_group() -> ParameterGroup:
         param_type=ParameterType.INT,
         category=ParameterCategory.BAROSTAT,
         validation=ParameterValidation(valid_values=[0, 1, 2, 3, 4]),
+        default_value=1, # Isotropic is the default for NPT ensemble
         notes="""0=No pressure control, 
         1=Isotropic 
         2=Anisotropic 

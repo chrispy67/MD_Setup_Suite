@@ -112,6 +112,25 @@ def create_nvt_parameter_group() -> ParameterGroup:
     #     default_value=300.0
     # ))
 
+        # Heating control parameters
+    group.add_parameter(AmberParameter(
+        yaml_key="ramped_heating",
+        amber_flag=None,  # Workflow parameter
+        description="Enable ramped heating protocol?: {value}",
+        param_type=ParameterType.BOOLEAN,
+        category=ParameterCategory.CONTROL,
+        default_value=False
+    ))
+    
+    group.add_parameter(AmberParameter(
+        yaml_key="ramps",
+        amber_flag=None,  # Workflow parameter
+        description="Number of heating ramps: {value}",
+        param_type=ParameterType.INT,
+        category=ParameterCategory.CONTROL,
+        default_value=0
+    ))
+
     group.add_parameter(AmberParameter(
         yaml_key="steps",
         amber_flag="nstlim",

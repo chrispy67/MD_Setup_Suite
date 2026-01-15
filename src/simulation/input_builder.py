@@ -33,10 +33,10 @@ class BuildInputFiles:
         else:
             self.system_name = getattr(self.cfg, "system_name", None) or getattr(self.cfg.directories, "system_name", "my_protein")
 
-        # each input file is renamed, filled out, and copied to the input_files_dir from JSON config
+        # each input file is renamed, filled out, and copied to the input_files_dir from workflow config
         # input_files_dir is relative to the project root (where simulation_setup.py is)
         project_root = Path(__file__).parent.parent.parent
-        self.input_files_dir = project_root / cfg["global"]["input_files_dir"]
+        self.input_files_dir = project_root / cfg["workflow"]["input_files_dir"]
     
     def _find_canonical_key(self, yaml_key: str) -> Optional[str]:
         """Find the canonical key by checking if yaml_key is in any group_name array.
@@ -232,7 +232,6 @@ class BuildInputFiles:
 
             # Parse JSON file for necessary info
             heat_windows = nvt_config.ramps
-            restraint_strings = nvt_config.restraint_string
             temp_i = nvt_config.initial_temperature
             temp_f = nvt_config.final_temperature
             
@@ -254,7 +253,7 @@ class BuildInputFiles:
             # Example variables you'd actually draw from config/environment
             base_sim_dir = "./simulations"
             window_heat_dirs = []
-            num_windows = self.cfg["global"]["windows"]
+            num_windows = self.cfg["workflow"]["windows"]
             system_name = self.system_name  # Use instance variable instead of getattr
 
             # Enumerate through each value pair in temp_windows and generate a subdirectory in each NVT/ folder in simulations/my_protein_window_{i}/NVT/heat1, heat2, etc.
@@ -267,7 +266,6 @@ class BuildInputFiles:
                     heat_dir = os.path.join(window_folder, f"heat{idx}")
                     try:
                         os.makedirs(heat_dir, exist_ok=False)  # FLOW CONTROL FOR OVERWRITING/CREATING NEW FOLDER HIREARCHIES STARTS HERE 
-                        # print(f"Heating directory created!: {heat_dir}")
                     except FileExistsError as e:
                         window_heat_dirs.append(heat_dir)
                         print(f"Failed to create directory, {heat_dir} already exists!")
@@ -289,8 +287,22 @@ class BuildInputFiles:
             # Create input files for each temperature window in each simulation window
             # Ensure restraint_string is a list of same length as temp_windows. If not, handle gracefully.
             restraint_strings = getattr(nvt_config, "restraint_string", [])
+            # Convert OmegaConf ListConfig to regular Python list if needed
+            restraint_strings = OmegaConf.to_container(restraint_strings, resolve=True) or []
+            
             if not isinstance(restraint_strings, (list, tuple)):
                 restraint_strings = [restraint_strings]
+
+
+            # Handles if restraints are wanted but no strings provided 
+            restraint_flag = getattr(nvt_config, "restraint", None)
+            if restraint_flag is not None and restraint_flag is False and any(rs for rs in restraint_strings):
+                print(
+                    "⚠️  Warning: 'restraint' is set to False, but 'restraint_string' is populated. "
+                    "Restraints will NOT be applied."
+                )
+
+            # Handles if restraint string does not match with ramped_window count
             if len(restraint_strings) != len(temp_windows):
                 print(
                     f"⚠️  restraint_string count ({len(restraint_strings)}) does not match temp_windows count ({len(temp_windows)})."
@@ -359,7 +371,7 @@ class BuildInputFiles:
             # Create input files for each simulation window (single NVT step)
             base_sim_dir = "./simulations"
             system_name = self.system_name  # Use instance variable instead of getattr
-            num_windows = self.cfg["global"]["windows"]
+            num_windows = self.cfg["workflow"]["windows"]
             
             # Handle temperature based on ramps value
             if nvt_config.ramps == 1:
@@ -393,6 +405,9 @@ class BuildInputFiles:
                 # Multi-step case: use initial_temperature and final_temperature
                 # Ensure restraint_string is an array with length one
                 restraint_strings = getattr(nvt_config, "restraint_string", [])
+                # Convert OmegaConf ListConfig to regular Python list if needed
+                restraint_strings = OmegaConf.to_container(restraint_strings, resolve=True) or []
+                
                 if not isinstance(restraint_strings, (list, tuple)):
                     restraint_strings = [restraint_strings]
                 if len(restraint_strings) != 1:
@@ -463,150 +478,61 @@ class BuildInputFiles:
             return None
         ramps = getattr(npt_config, "ramps", 1)
         
-        if ramps > 1:
-            # Multiple equilibration ramps
-            restraint_strings = getattr(npt_config, "restraint_string", [])
-            
-            # print(f"***NPT equilibration will be done in {ramps} steps***")
-            
-            # Ensure restraint_string is a list
-            if not isinstance(restraint_strings, (list, tuple)):
-                restraint_strings = [restraint_strings]
-            
-            if len(restraint_strings) != ramps:
-                print(
-                    f"⚠️  restraint_string count ({len(restraint_strings)}) does not match ramps count ({ramps})."
-                    " The last restraint will be used for all remaining windows."
-                )
-            
-            # Example variables you'd actually draw from config/environment
-            base_sim_dir = "./simulations"
-            equil_dirs = []
-            num_windows = self.cfg["global"]["windows"]
-            system_name = self.system_name  # Use instance variable instead of getattr
-            
-            # Enumerate through each ramp and generate a subdirectory in each NPT/ folder in simulations/my_protein_window_{i}/NPT/equil0, equil1, etc.
-            for window_idx in range(0, num_windows):
-                window_folder = os.path.join(
-                    base_sim_dir, f"{system_name}_window_{window_idx}", "NPT"
-                )
-                for idx in range(ramps):
-                    equil_dir = os.path.join(window_folder, f"equil{idx}")
-                    try:
-                        os.makedirs(equil_dir, exist_ok=False)  # FLOW CONTROL FOR OVERWRITING/CREATING NEW FOLDER HIREARCHIES STARTS HERE 
-                        print(f"Equilibration directory created!: {equil_dir}")
-                    except FileExistsError as e:
-                        equil_dirs.append(equil_dir)
-                        print(f"Failed to create directory, {equil_dir} already exists!")
-            
-            ## Build input files for each equilibration ramp
-            # Read the template file
-            template_path = self.input_files_dir / "equil_BLANK.in"
-            
-            if not template_path.exists():
-                logger.error(f"Template file not found: {template_path}")
-                return
-            
-            with open(template_path, 'r') as f:
-                template_content = f.read()
-            
-            # Create input files for each ramp in each simulation window
-            for window_idx in range(0, num_windows):
-                window_folder = os.path.join(
-                    base_sim_dir, f"{system_name}_window_{window_idx}", "NPT"
-                )
-                
-                for ramp_idx in range(ramps):
-                    equil_dir = os.path.join(window_folder, f"equil{ramp_idx}")
-                    
-                    # Select the appropriate restraint_string for this ramp, falling back to last available if not enough values
-                    if len(restraint_strings) > 0:
-                        restraint_for_window = (
-                            restraint_strings[ramp_idx]
-                            if ramp_idx < len(restraint_strings)
-                            else restraint_strings[-1]
-                        )
-                    else:
-                        restraint_for_window = ""
-                    
-                    # Prepare a special_values dict; add restraint_string for this equilibration ramp
-                    special_values = {
-                        "restraint_string": restraint_for_window,
-                    }
-                    
-                    # Create a copy of the template for this specific equilibration ramp
-                    current_template = template_content
-                    
-                    # Replace placeholders using registry-based method and special_values per window
-                    current_template = self._replace_template_placeholders(
-                        current_template, mapping, npt_config, npt_group, special_values
-                    )
-                    
-                    # Also replace the restraint_string placeholder directly (for backward compatibility)
-                    current_template = current_template.replace("{restraint_string}", str(restraint_for_window))
-                    
-                    # Write the populated content to the specific equilibration directory
-                    output_path = os.path.join(equil_dir, "equil.in")
-                    with open(output_path, 'w') as f:
-                        f.write(current_template)
         
-        else:
-            # print("**NPT equilibration will be done in one step**")
+        # Read the template file for NPT equilibration
+        template_path = self.input_files_dir / "equil_BLANK.in"
+        
+        if not template_path.exists():
+            logger.error(f"Template file not found: {template_path}")
+            return
+        
+        with open(template_path, 'r') as f:
+            template_content = f.read()
+        
+        # Create input files for each simulation window (single NPT step)
+        base_sim_dir = "./simulations"
+        system_name = self.system_name  # Use instance variable instead of getattr
+        num_windows = self.cfg["workflow"]["windows"]
+        
+        # Ensure restraint_string is an array with length one
+        restraint_strings = getattr(npt_config, "restraint_string", [])
+        if not isinstance(restraint_strings, (list, tuple)):
+            restraint_strings = [restraint_strings]
+        if len(restraint_strings) != 1:
+            if len(restraint_strings) > 1:
+                logger.warning(f"restraint_string has {len(restraint_strings)} elements, using first element only")
+                restraint_strings = [restraint_strings[0]]
+            else:
+                logger.warning("restraint_string is empty, using NO restraints")
+                restraint_strings = [""]
+        
+        restraint_for_window = restraint_strings[0]
+        
+        # Special values for single-step NPT
+        special_values = {
+            "restraint_string": restraint_for_window
+        }
+        
+        for window_idx in range(0, num_windows):
+            window_folder = os.path.join(
+                base_sim_dir, f"{system_name}_window_{window_idx}", "NPT"
+            )
             
-            # Read the template file for single-step NPT
-            template_path = self.input_files_dir / "equil_BLANK.in"
+            # Create a copy of the template for this window
+            current_template = template_content
             
-            if not template_path.exists():
-                logger.error(f"Template file not found: {template_path}")
-                return
+            # Replace placeholders using registry-based method
+            current_template = self._replace_template_placeholders(
+                current_template, mapping, npt_config, npt_group, special_values
+            )
             
-            with open(template_path, 'r') as f:
-                template_content = f.read()
+            # Also replace the restraint_string placeholder directly (for backward compatibility)
+            current_template = current_template.replace("{restraint_string}", str(special_values["restraint_string"]))
             
-            # Create input files for each simulation window (single NPT step)
-            base_sim_dir = "./simulations"
-            system_name = self.system_name  # Use instance variable instead of getattr
-            num_windows = self.cfg["global"]["windows"]
-            
-            # Ensure restraint_string is an array with length one
-            restraint_strings = getattr(npt_config, "restraint_string", [])
-            if not isinstance(restraint_strings, (list, tuple)):
-                restraint_strings = [restraint_strings]
-            if len(restraint_strings) != 1:
-                if len(restraint_strings) > 1:
-                    logger.warning(f"restraint_string has {len(restraint_strings)} elements, using first element only")
-                    restraint_strings = [restraint_strings[0]]
-                else:
-                    logger.warning("restraint_string is empty, using NO restraints")
-                    restraint_strings = [""]
-            
-            restraint_for_window = restraint_strings[0]
-            
-            # Special values for single-step NPT
-            special_values = {
-                "restraint_string": restraint_for_window
-            }
-            
-            for window_idx in range(0, num_windows):
-                window_folder = os.path.join(
-                    base_sim_dir, f"{system_name}_window_{window_idx}", "NPT"
-                )
-                
-                # Create a copy of the template for this window
-                current_template = template_content
-                
-                # Replace placeholders using registry-based method
-                current_template = self._replace_template_placeholders(
-                    current_template, mapping, npt_config, npt_group, special_values
-                )
-                
-                # Also replace the restraint_string placeholder directly (for backward compatibility)
-                current_template = current_template.replace("{restraint_string}", str(special_values["restraint_string"]))
-                
-                # Write the populated content to the NPT directory
-                output_path = os.path.join(window_folder, "equil.in")
-                with open(output_path, 'w') as f:
-                    f.write(current_template)
+            # Write the populated content to the NPT directory
+            output_path = os.path.join(window_folder, "equil.in")
+            with open(output_path, 'w') as f:
+                f.write(current_template)
         
         return output_path
     
