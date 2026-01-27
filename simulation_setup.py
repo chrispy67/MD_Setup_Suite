@@ -48,7 +48,6 @@ def main():
     setup = SimulationSetup(cfg)
 
     # Initialize input files instance to build input files according to registry parameters, dependencies, and cross dependencies 
-    input_files = BuildInputFiles(cfg, system_name=system_name)
     
 
     # # Build directories for ALL windows (umbrella sampling)
@@ -89,19 +88,24 @@ def main():
     display_simulation_order_summary(simulation_order, cfg, windows, yaml_to_canonical)
     
     # Dynamically register simulation parameter groups based on YAML
-    registered_groups = register_simulation_groups(registry, simulation_order)
+    register_simulation_groups(registry, simulation_order)
     
     # Validate workflow parameters
     workflow_group = registry.get_group("workflow")
     
-    is_valid, errors = workflow_group.validate_config(workflow_config)
+    is_valid, errors, warnings = workflow_group.validate_config(workflow_config)
+    if warnings:
+        print("⚠️  Workflow parameter warnings (auto-applied defaults):")
+        for warning in warnings:
+            print(f"  - {warning}")
     if not is_valid:
         print("❌ Workflow configuration errors:")
         for error in errors:
             print(f"  - {error}")
         # return
     else:
-        print("✅ Workflow configuration valid")
+        if not warnings:  # Only show success if there are no warnings either
+            print("✅ Workflow configuration valid")
 
     display_parameter_summary(
         group=workflow_group, # registry group with associated metadata, defaults, and validation
@@ -148,15 +152,20 @@ def main():
         group_configs[primary_group_name] = sim_config
         
         # Validate
-        is_valid, errors = sim_group.validate_config(sim_config)
+        is_valid, errors, warnings = sim_group.validate_config(sim_config)
         
+        if warnings:
+            print(f"⚠️  {display_name} parameter warnings (auto-applied defaults):")
+            for warning in warnings:
+                print(f"  - {warning}")
         if not is_valid:
             print(f"❌ {display_name} configuration errors:")
             for error in errors:
                 print(f"  - {error}")
             # return
         else:
-            print(f"✅ {display_name} configuration valid")
+            if not warnings:  # Only show success if there are no warnings either
+                print(f"✅ {display_name} configuration valid")
         
         # Display parameter summary
         title = f"{display_name} Parameters"
@@ -298,10 +307,13 @@ def main():
     # PULLS VALUES DIRECTLY FROM YAML CONFIGURATION, NOT NECESSARILY DEFINED IN REGISTRY
     # print(workflow_config)
 
+    input_files = BuildInputFiles(registry, validated_configs=group_configs, system_name=system_name)
+
+
     # print("\nGenerating input files...")
-    input_files.build_em(registry)
-    input_files.build_nvt_equil(registry)
-    input_files.build_npt_equil(registry)
+    input_files.build_em()
+    # input_files.build_nvt_equil(registry)
+    # input_files.build_npt_equil(registry)
 
 
 

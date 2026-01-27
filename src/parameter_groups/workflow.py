@@ -46,5 +46,13 @@ def create_workflow_parameter_group() -> ParameterGroup:
         default_value="TIP3P"
     ))
     
+    group.add_parameter(AmberParameter(
+        yaml_key="hmass_repart",
+        amber_flag=None,  # Workflow parameter
+        description="Whether to repartition hydrogen masses: {value}",
+        param_type=ParameterType.BOOLEAN, # True/False
+        category=ParameterCategory.WORKFLOW,
+        default_value=False
+    ))
     return group
 

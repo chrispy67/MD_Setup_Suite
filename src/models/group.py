@@ -37,22 +37,38 @@ class ParameterGroup(BaseModel):
         return [param for param in self.parameters if param.category == category]
 
 
-    def validate_config(self, config: Dict[str, Any]) -> tuple[bool, List[str]]:
-        """Check for basic consistencies like typing, ranges, valid values, etc."""
-        errors = []
+    def validate_config(self, config: Dict[str, Any]) -> tuple[bool, List[str], List[str]]:
+        """Check for basic consistencies like typing, ranges, valid values, etc.
         
-        # First, validate individual parameters
+        Automatically applies default values for missing parameters and returns warnings.
+        
+        Returns:
+            Tuple of (is_valid, errors, warnings)
+        """
+        errors = []
+        warnings = []
+        
+        # First, apply defaults for missing parameters and collect warnings
+        for param in self.parameters:
+            if param.yaml_key not in config and param.default_value is not None:
+                # Parameter is missing but has a default value - apply it
+                config[param.yaml_key] = param.default_value
+                warnings.append(
+                    f"⚠️  Parameter '{param.yaml_key}' not specified, using default value: {param.default_value}"
+                )
+        
+        # Then, validate individual parameters
         for param in self.parameters:
             if param.yaml_key in config:
                 is_valid, error_msg = param.validate_value(config[param.yaml_key])
                 if not is_valid:
                     errors.append(f"{param.yaml_key}: {error_msg}")
         
-        # Then, validate cross-parameter dependencies
+        # Finally, validate cross-parameter dependencies
         dependency_errors = self.validate_dependencies(config)
         errors.extend(dependency_errors)
         
-        return len(errors) == 0, errors
+        return len(errors) == 0, errors, warnings
     
     def validate_dependencies(self, config: Dict[str, Any]) -> List[str]:
         """Validate cross-parameter dependencies based on already chosen parameters."""
