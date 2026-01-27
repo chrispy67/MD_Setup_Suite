@@ -37,11 +37,10 @@ simulations:
 
   energy_minimization:
     subdirectory: "./simulations/em"
-    name: "energy_minimization"
     min_method: 1
     MD_method: 0
-    restart: False
-    steps: 100000
+    # restart: False
+    # steps: 69
     timestep: 0.004
     output_frequency: 50 # output control to be piped to amber
 
@@ -80,7 +79,6 @@ simulations:
     # simulation control
     steps: 100000 # steps per ramp
     timestep: 0.004 #ps
-    hmass_repart: false
     nonbonded_cut: 10.0 
     output_frequency: 1000
     read_prev_coordinates: 1
@@ -121,7 +119,6 @@ simulations:
 
     steps: 1000000
     timestep: 0.004
-    hmass_repart: false
     nonbonded_cut: 10.0
     output_frequency: 1000
 
@@ -137,7 +134,6 @@ simulations:
 
     steps: 5000000
     timestep: 0.004
-    hmass_repart: false
     nonbonded_cut: 10.0
     output_frequency: 5000
 
